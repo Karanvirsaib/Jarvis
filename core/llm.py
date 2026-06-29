@@ -1,45 +1,41 @@
 from ollama import chat
+import json
 
-MODEL = "qwen3:8b"
 
-SYSTEM_PROMPT = """
+def ask_llm(user_input, context=""):
+
+    system_prompt = f"""
 You are JARVIS.
 
-You are an intelligent AI assistant inspired by Iron Man's JARVIS.
+Return ONLY valid JSON in this format:
 
-Be concise, professional, and helpful.
+{{
+  "answer": "final response"
+}}
 
-Never reveal your underlying model unless explicitly asked.
+Rules:
+- No greetings
+- No emojis
+- No extra text
+- Only JSON output
+- If memory answers the question, use it
+- If unknown, return "I don't know"
+
+MEMORY:
+{context}
 """
 
-conversation = [
-    {
-        "role": "system",
-        "content": SYSTEM_PROMPT,
-    }
-]
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_input}
+    ]
 
+    response = chat(model="qwen3:8b", messages=messages)
 
-def ask_llm(user_message: str) -> str:
-    conversation.append(
-        {
-            "role": "user",
-            "content": user_message,
-        }
-    )
+    text = response.message.content
 
-    response = chat(
-        model=MODEL,
-        messages=conversation,
-    )
-
-    assistant_message = response.message.content
-
-    conversation.append(
-        {
-            "role": "assistant",
-            "content": assistant_message,
-        }
-    )
-
-    return assistant_message
+    try:
+        data = json.loads(text)
+        return data.get("answer", text)
+    except:
+        return text
