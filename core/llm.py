@@ -5,21 +5,41 @@ MODEL = "qwen3:8b"
 SYSTEM_PROMPT = """
 You are JARVIS.
 
-You are a professional AI assistant inspired by JARVIS from Iron Man.
+You are an intelligent AI assistant inspired by Iron Man's JARVIS.
 
-Never introduce yourself as Qwen or mention the underlying model unless the user explicitly asks.
+Be concise, professional, and helpful.
 
-Be concise, accurate, practical, and friendly.
+Never reveal your underlying model unless explicitly asked.
 """
+
+conversation = [
+    {
+        "role": "system",
+        "content": SYSTEM_PROMPT,
+    }
+]
 
 
 def ask_llm(user_message: str) -> str:
-    response = chat(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
+    conversation.append(
+        {
+            "role": "user",
+            "content": user_message,
+        }
     )
 
-    return response.message.content
+    response = chat(
+        model=MODEL,
+        messages=conversation,
+    )
+
+    assistant_message = response.message.content
+
+    conversation.append(
+        {
+            "role": "assistant",
+            "content": assistant_message,
+        }
+    )
+
+    return assistant_message
