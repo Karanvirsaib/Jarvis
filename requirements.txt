@@ -1,4 +1,13 @@
-openai
-python-dotenv
-rich
-pydantic
+ollama>=0.6,<1
+python-dotenv>=1.2,<2
+rich>=15,<16
+pydantic>=2.13,<3
+pyttsx3>=2.99,<3
+SpeechRecognition>=3.17,<4
+PyAudio>=0.2.14,<1
+customtkinter>=6,<7
+pandas>=2.3,<3
+openpyxl>=3.1,<4
+matplotlib>=3.10,<4
+edge-tts>=7.2,<8
+pygame>=2.6,<3

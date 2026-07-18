@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+logs/
+*.log
+
+# Local application state and generated analysis output
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
+output/
+
+# External skill reference repository
+awesome-codex-skills/
