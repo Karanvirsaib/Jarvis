@@ -5,6 +5,8 @@ from core.coding import LocalCoder
 from core.llm import LLMClient
 from core.memory import MemoryManager
 from core.intent import Intent, IntentInterpreter
+from core.research import WebResearcher
+from core.resume import ResumeTailor
 from datetime import datetime
 import re
 
@@ -16,6 +18,8 @@ class JarvisAssistant:
         self.analyst = DataAnalyst()
         self.coder = LocalCoder(llm)
         self.interpreter = IntentInterpreter(llm)
+        self.researcher = WebResearcher(llm)
+        self.resume = ResumeTailor(memory, llm)
         self.history: list[dict[str, str]] = []
         self.intelligence_mode = "fast"
         self.last_interaction_id: int | None = None
@@ -93,8 +97,43 @@ class JarvisAssistant:
                 "Core systems: conversation, persistent memory, local learning, voice, "
                 "CSV/Excel analysis, charts, read-only SQL, and Python/SQL generation.\n"
                 "Try 'morning briefing', 'system status', 'show memory', 'data help', "
-                "'code help', or 'capabilities'."
+                "'code help', 'resume help', or 'capabilities'."
             )
+        if lowered in {"resume help", "cv help"}:
+            return (
+                "ATS RESUME WORKFLOW\n"
+                "1. Attach your current .docx, .pdf, or .txt resume, or use: load resume \"C:\\path\\resume.docx\"\n"
+                "2. Paste the full role posting with: tailor resume: <job description>\n"
+                "3. Review the matched keywords and honest gaps.\n"
+                "4. Say: export resume word — or — export resume pdf\n"
+                "Jarvis preserves official titles and source facts; unsupported requirements are reported as gaps, never invented."
+            )
+        if lowered == "resume status":
+            return self.resume.status()
+        if lowered.startswith("load resume "):
+            path = text[len("load resume "):].strip().strip('"')
+            try:
+                return self.resume.load(path)
+            except (FileNotFoundError, ValueError, RuntimeError) as exc:
+                return str(exc)
+        if lowered.startswith("tailor resume:") or lowered.startswith("tailor cv:"):
+            description = text.split(":", 1)[1].strip()
+            try:
+                return self.resume.tailor(description)
+            except (ValueError, RuntimeError) as exc:
+                return str(exc)
+        if lowered in {"export resume word", "export resume docx", "create resume word"}:
+            try:
+                path = self.resume.export("word")
+                return f"ATS-friendly Word resume created: {path}"
+            except (ValueError, RuntimeError) as exc:
+                return str(exc)
+        if lowered in {"export resume pdf", "create resume pdf"}:
+            try:
+                path = self.resume.export("pdf")
+                return f"ATS-friendly PDF resume created: {path}"
+            except (ValueError, RuntimeError) as exc:
+                return str(exc)
         if lowered in {"capabilities", "show capabilities", "what can you do"}:
             return (
                 "ACTIVE MODULES\n"
@@ -103,11 +142,16 @@ class JarvisAssistant:
                 "- Voice input plus offline/neural spoken responses\n"
                 "- CSV and Excel analysis, charts, correlations, and read-only SQL\n"
                 "- Safe Python and SQL code generation (never auto-executed)\n"
-                "- Local morning briefings and system status\n\n"
+                "- Local morning briefings and system status\n"
+                "- Evidence-grounded web research with source links\n\n"
+                "- Truth-constrained ATS resume tailoring with Word and PDF export\n\n"
                 "PLANNED / REQUIRES CONNECTIONS\n"
-                "- Calendar and email digest, scheduled monitors, deep web research, "
+                "- Calendar and email digest, scheduled monitors, "
                 "document indexing, and a broader installable skills catalog."
             )
+        web_query = self._web_query(text)
+        if web_query:
+            return self.researcher.research(web_query)
         if lowered in {"system status", "status report", "diagnostic"}:
             stats = self.memory.learning_stats()
             dataset = self.analyst.dataset
@@ -201,6 +245,9 @@ class JarvisAssistant:
             self.history[-8:],
             deep_reasoning=one_time_deep or self.intelligence_mode == "deep",
         )
+        if response.strip().upper().startswith("NEEDS_WEB:"):
+            query = response.split(":", 1)[1].strip() or prompt
+            response = self.researcher.research(query)
         self.history.extend(
             [
                 {"role": "user", "content": text},
@@ -208,6 +255,20 @@ class JarvisAssistant:
             ]
         )
         return response
+
+    @staticmethod
+    def _web_query(text: str) -> str | None:
+        lowered = text.casefold().strip()
+        for prefix in ("search web:", "web search:", "research:", "look up:", "verify online:"):
+            if lowered.startswith(prefix):
+                return text[len(prefix):].strip()
+        current_signals = (
+            "latest", "today", "currently", "current price", "current rate", "recent news",
+            "this week", "this month", "as of now", "live score", "weather forecast",
+        )
+        if any(signal in lowered for signal in current_signals):
+            return text
+        return None
 
     @staticmethod
     def _day_period() -> str:

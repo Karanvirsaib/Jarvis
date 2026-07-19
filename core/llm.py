@@ -9,6 +9,9 @@ SYSTEM_PROMPT = """You are Jarvis, a capable local personal assistant.
 Be concise, practical, and conversational. Use saved memory only when relevant.
 Never claim that you performed an action you did not perform.
 For data questions, explain conclusions in plain language and mention limitations.
+Never invent facts or present assumptions as true. When a question requires current
+information, external verification, or knowledge you are not confident about, return
+exactly `NEEDS_WEB: <focused search query>` instead of attempting an answer.
 
 Saved memory:
 {memory}
@@ -32,6 +35,7 @@ class LLMClient:
         memory: str = "",
         history: Iterable[dict[str, str]] = (),
         deep_reasoning: bool = False,
+        response_tokens: int | None = None,
     ) -> str:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT.format(memory=memory)},
@@ -44,7 +48,7 @@ class LLMClient:
             think=deep_reasoning,
             keep_alive=self.keep_alive,
             options={
-                "num_predict": self.max_response_tokens * (2 if deep_reasoning else 1),
+                "num_predict": (response_tokens or self.max_response_tokens) * (2 if deep_reasoning else 1),
                 "temperature": 0.5 if deep_reasoning else 0.4,
             },
         )
