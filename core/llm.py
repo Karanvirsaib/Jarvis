@@ -1,6 +1,7 @@
 """Local language-model client."""
 
 from collections.abc import Iterable
+import threading
 
 from ollama import chat
 
@@ -28,6 +29,28 @@ class LLMClient:
         self.model = model
         self.keep_alive = keep_alive
         self.max_response_tokens = max_response_tokens
+        self._warm_complete = threading.Event()
+        self._warm_ok = False
+
+    def warm_up(self) -> bool:
+        """Load the model into Ollama without blocking desktop startup."""
+        try:
+            chat(
+                model=self.model,
+                messages=[{"role": "user", "content": "Reply with one word: ready"}],
+                think=False,
+                keep_alive=self.keep_alive,
+                options={"num_predict": 1, "temperature": 0},
+            )
+            self._warm_ok = True
+            return True
+        except Exception:
+            return False
+        finally:
+            self._warm_complete.set()
+
+    def warm_status(self) -> dict[str, bool]:
+        return {"complete": self._warm_complete.is_set(), "ready": self._warm_ok}
 
     def ask(
         self,
@@ -52,6 +75,8 @@ class LLMClient:
                 "temperature": 0.5 if deep_reasoning else 0.4,
             },
         )
+        self._warm_ok = True
+        self._warm_complete.set()
         return response.message.content.strip()
 
 

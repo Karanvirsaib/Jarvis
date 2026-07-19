@@ -1,8 +1,50 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = {busy:false, view:'home', listening:false, pointerX:.5, pointerY:.5, pointerEnergy:0};
+const state = {busy:false, view:'home', listening:false, bridgeReady:false, modelMonitorStarted:false, pointerX:.5, pointerY:.5, pointerEnergy:0};
 
-function api(){ return window.pywebview?.api; }
+let desktopApi=null;
+let resolveBridge;
+const bridgeReady=new Promise(resolve=>{resolveBridge=resolve});
+function captureBridge(){
+  const bridge=window.pywebview?.api;
+  if(!bridge||typeof bridge.respond!=='function')return null;
+  desktopApi=bridge;
+  state.bridgeReady=true;
+  resolveBridge(bridge);
+  document.body.classList.add('bridge-connected');
+  const gate=$('#bridge-gate');if(gate)setTimeout(()=>gate.remove(),420);
+  if(typeof bridge.ready==='function')bridge.ready().catch(()=>{});
+  monitorModel(bridge);
+  return bridge;
+}
+async function monitorModel(bridge){
+  if(state.modelMonitorStarted||typeof bridge.model_status!=='function')return;
+  state.modelMonitorStarted=true;
+  for(let attempt=0;attempt<90;attempt++){
+    try{
+      const result=await bridge.model_status();
+      if(result.complete==='true'){
+        setStatus(result.ready==='true'?'Online and ready':'Model available on first request',result.ready==='true'?'ready':'busy');
+        return;
+      }
+      setStatus('Warming local model','busy');
+    }catch(e){return;}
+    await new Promise(resolve=>setTimeout(resolve,350));
+  }
+  setStatus('Model available on first request','busy');
+}
+async function waitForApi(method, timeout=1400){
+  const immediate=desktopApi||captureBridge();
+  if(immediate&&typeof immediate[method]==='function')return immediate;
+  const bridge=await Promise.race([
+    bridgeReady,
+    new Promise(resolve=>setTimeout(()=>resolve(null),timeout)),
+  ]);
+  return bridge&&typeof bridge[method]==='function'?bridge:null;
+}
+function bridgeFailure(){
+  return {ok:'false',answer:'The Jarvis desktop bridge is still connecting. Please wait a moment and try again.'};
+}
 function setStatus(text, tone='ready'){
   $('#status').innerHTML=`<span style="background:${tone==='error'?'#e47d83':tone==='busy'?'#a989e8':'#64d6a7'}"></span>${text.toUpperCase()}`;
 }
@@ -13,9 +55,26 @@ function showView(name){
   if(name==='conversation') setTimeout(()=>$('#prompt').focus(),350);
 }
 function stamp(){return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
+async function copyText(text,button){
+  text=text.replace(/^```[a-z0-9_+.-]*\s*$/gmi,'').replace(/^```\s*$/gm,'').trim();
+  let copied=false;
+  try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);copied=true;}}catch(e){}
+  if(!copied){
+    const area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');area.style.cssText='position:fixed;opacity:0;pointer-events:none';document.body.append(area);area.select();
+    try{copied=document.execCommand('copy');}catch(e){}area.remove();
+  }
+  button.textContent=copied?'COPIED':'COPY FAILED';button.classList.toggle('copied',copied);
+  setTimeout(()=>{button.textContent='COPY';button.classList.remove('copied')},1400);
+}
+function addCopyButton(article,text){
+  const meta=article.querySelector('.message-meta');if(!meta||meta.querySelector('.copy-message'))return;
+  const button=document.createElement('button');button.className='copy-message';button.type='button';button.textContent='COPY';button.title='Copy Jarvis response';
+  button.addEventListener('click',event=>{event.stopPropagation();copyText(text,button)});meta.append(button);
+}
 function addMessage(role,text,loading=false){
   const article=document.createElement('article'); article.className=`message ${role}`;
   article.innerHTML=`<div class="message-meta"><span class="message-mark"></span>${role==='user'?'KARAN':'JARVIS'} <time>${stamp()}</time></div><p>${loading?'<span class="loading-dots"><i></i><i></i><i></i></span>':escapeHtml(text)}</p>`;
+  if(role==='jarvis'&&!loading)addCopyButton(article,text);
   $('#transcript').append(article); $('#transcript').scrollTop=$('#transcript').scrollHeight; return article;
 }
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -23,30 +82,34 @@ async function submit(command){
   command=(command||$('#prompt').value).trim(); if(!command||state.busy)return;
   state.busy=true; $('#prompt').value=''; showView('conversation'); addMessage('user',command); const wait=addMessage('jarvis','',true); setStatus('Jarvis is thinking','busy');
   let result;
-  try{result=api()?await api().respond(command):{ok:'true',answer:'Preview mode — the Python assistant bridge is not connected.'};}
-  catch(e){result={ok:'false',answer:String(e)}}
+  try{const bridge=await waitForApi('respond');result=bridge?await bridge.respond(command):bridgeFailure();}
+  catch(e){result={ok:'false',answer:'Jarvis could not reach the local assistant core. Please restart the desktop app.'}}
   wait.remove(); addMessage('jarvis',result.answer); setStatus(result.ok==='true'?'Online and ready':'Request failed',result.ok==='true'?'ready':'error'); state.busy=false;
-  if($('#speak-answers').checked&&api()) api().speak(result.answer);
+  if($('#speak-answers').checked){const bridge=await waitForApi('speak',800);if(bridge)bridge.speak(result.answer);}
 }
 async function listen(){
   if(state.busy)return; state.busy=true; state.listening=true; $('#mic').classList.add('active'); $('#hero-orb').classList.add('active'); $('#rail-listen').classList.add('active'); $('#listen-label').textContent='Listening…'; setStatus('Listening');
-  let result; try{result=api()?await api().listen():{ok:'false',text:''};}catch(e){result={ok:'false',text:String(e)}}
+  let result; try{const bridge=await waitForApi('listen');result=bridge?await bridge.listen():{ok:'false',text:'The voice bridge is still connecting.'};}catch(e){result={ok:'false',text:'Jarvis could not start voice input.'}}
   $('#mic').classList.remove('active'); $('#hero-orb').classList.remove('active'); $('#rail-listen').classList.remove('active'); $('#listen-label').textContent='Tap the orb to speak'; state.busy=false; state.listening=false;
   if(result.ok==='true'&&result.text) submit(result.text); else setStatus(result.text||'I did not catch that','error');
 }
 async function chooseDataset(){
-  if(!api()){showView('conversation');addMessage('jarvis','File selection is available in the desktop app.');return;}
-  const result=await api().choose_dataset(); if(result.ok==='true'&&result.path) submit(`analyze "${result.path}"`);
+  const bridge=await waitForApi('choose_dataset');
+  if(!bridge){showView('conversation');addMessage('jarvis','The desktop file picker is still connecting. Please try again.');return;}
+  const result=await bridge.choose_dataset(); if(result.ok==='true'&&result.path) submit(`analyze "${result.path}"`);
 }
 async function chooseResume(){
   showView('conversation');
   addMessage('jarvis','Choose your current resume. I will use it as the factual boundary, then ask you for the complete job description.');
-  if(!api()){addMessage('jarvis','File selection is available in the desktop app.');return;}
-  const result=await api().choose_resume(); if(result.ok==='true'&&result.path) submit(`load resume "${result.path}"`);
+  const bridge=await waitForApi('choose_resume');
+  if(!bridge){addMessage('jarvis','The desktop file picker is still connecting. Please try again.');return;}
+  const result=await bridge.choose_resume(); if(result.ok==='true'&&result.path) submit(`load resume "${result.path}"`);
 }
-function setMode(mode){
+async function setMode(mode){
   $$('.mode-switch button').forEach(b=>b.classList.toggle('selected',b.dataset.mode===mode));
-  if(api()) api().set_mode(mode); setStatus(`${mode} intelligence enabled`);
+  const bridge=await waitForApi('set_mode',1200);
+  if(bridge)await bridge.set_mode(mode);
+  setStatus(`${mode} intelligence enabled`);
 }
 function updateClock(){const d=new Date();$('#clock').textContent=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});$('#date').textContent=d.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});const h=d.getHours();$('#greeting').textContent=h<12?'Good morning,':h<17?'Good afternoon,':'Good evening,';}
 
@@ -57,7 +120,10 @@ $('#send').addEventListener('click',()=>submit()); $('#prompt').addEventListener
 $('#mic').addEventListener('click',listen); $('#hero-orb').addEventListener('click',listen); $('#rail-listen').addEventListener('click',listen);
 $('#attach').addEventListener('click',chooseDataset); $('#dataset-card').addEventListener('click',chooseDataset);
 $('#resume-nav').addEventListener('click',chooseResume); $('#resume-card').addEventListener('click',chooseResume);
+window.addEventListener('pywebviewready',()=>{captureBridge();setStatus('Python core connected')});
+captureBridge();
 $$('.message time').forEach(t=>t.textContent=stamp()); updateClock(); setInterval(updateClock,1000);
+$$('.message.jarvis').forEach(message=>addCopyButton(message,message.querySelector('p')?.innerText||''));
 
 // Living waveform: layered energy waves react to time, pointer position, hover, and listening state.
 const waveCanvas=$('#orb-wave');

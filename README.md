@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/AI-Local%20Ollama-111111)](https://ollama.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows11&logoColor=white)](#requirements)
-[![Tests](https://img.shields.io/badge/tests-34%20passing-3AA76D)](#testing)
+[![Tests](https://img.shields.io/badge/tests-42%20passing-3AA76D)](#testing)
 
 > A local-first personal AI assistant with voice, memory, data analysis, code generation, and a cinematic desktop command center.
 
@@ -227,7 +227,7 @@ Jarvis is configured with environment variables:
 | `JARVIS_LISTEN_TIMEOUT` | `5` | Seconds to wait for microphone input |
 | `JARVIS_PHRASE_TIME_LIMIT` | `15` | Maximum spoken-command duration |
 | `JARVIS_OLLAMA_KEEP_ALIVE` | `30m` | Time Ollama keeps the model loaded |
-| `JARVIS_MAX_RESPONSE_TOKENS` | `384` | Standard response-token budget |
+| `JARVIS_MAX_RESPONSE_TOKENS` | `192` | Fast-mode response budget; lower values return sooner |
 | `JARVIS_NEURAL_VOICE` | `en-GB-RyanNeural` | Edge TTS voice |
 | `JARVIS_NEURAL_VOICE_RATE` | `+0%` | Neural speech speed adjustment |
 | `JARVIS_NEURAL_VOICE_PITCH` | `-2Hz` | Neural speech pitch adjustment |
