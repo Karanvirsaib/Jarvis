@@ -1,6 +1,6 @@
-# Aethon: Step-by-Step Build Plan for a Local Codex-Like Assistant
+# Aethon: Build Plan for an Iron Man JARVIS-Inspired Local Assistant
 
-This document turns the earlier concept into a practical build plan for **Aethon**: a local-first assistant that can answer questions, help write code, control apps, and coordinate task agents.
+This document turns the earlier concept into a practical build plan for **Aethon**: a local-first assistant inspired by the Iron Man JARVIS style of calm, capable, always-available support.
 
 ## What Aethon should do
 
@@ -10,8 +10,9 @@ Aethon should be able to:
 - explain and generate code;
 - modify files with user approval;
 - launch and control supported apps;
-- break large goals into smaller tasks;
-- track progress across multi-step work; and
+- manage reminders, workflows, and task execution;
+- coordinate multi-step agent work;
+- speak in a composed, helpful, and concise style; and
 - keep as much data local as possible.
 
 ## Build plan
@@ -147,7 +148,7 @@ Responsible for conversation, reasoning, memory lookup, and tool selection.
 
 ### Tool layer
 
-Provides controlled actions for files, apps, terminal commands, and task operations.
+Provides controlled actions for files, apps, terminal commands, reminders, and task operations.
 
 ### Agent layer
 
@@ -168,6 +169,7 @@ Shows chat, tool activity, task state, and assistant responses.
 - Do not auto-run code unless the user explicitly allows it.
 - Log important actions locally.
 - Make it easy to review or undo work.
+- Preserve a polished, trustworthy assistant personality without pretending to be human.
 
 ## Suggested project phases for Aethon
 
@@ -179,4 +181,4 @@ Shows chat, tool activity, task state, and assistant responses.
 
 ## Outcome
 
-If built in this order, Aethon becomes a practical local assistant that feels Codex-like while staying private, controllable, and extensible.
+If built in this order, Aethon becomes a practical local assistant that feels JARVIS-inspired while staying private, controllable, and extensible.
