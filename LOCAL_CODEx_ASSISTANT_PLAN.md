@@ -1,150 +1,182 @@
-# Local Codex-Like Assistant Plan for Jarvis
+# Aethon: Step-by-Step Build Plan for a Local Codex-Like Assistant
 
-This document describes how to evolve Jarvis into a fully local, Codex-like assistant that can answer questions, write and explain code, control apps, and coordinate task agents.
+This document turns the earlier concept into a practical build plan for **Aethon**: a local-first assistant that can answer questions, help write code, control apps, and coordinate task agents.
 
-## Goal
+## What Aethon should do
 
-Build a local-first assistant that stays on the user's device and can:
+Aethon should be able to:
 
-- answer general questions conversationally;
-- help write, edit, and explain code;
-- use tools to control desktop apps and workflows;
-- break larger work into task plans; and
-- keep memory, context, and user data private whenever possible.
+- answer questions in natural language;
+- explain and generate code;
+- modify files with user approval;
+- launch and control supported apps;
+- break large goals into smaller tasks;
+- track progress across multi-step work; and
+- keep as much data local as possible.
 
-## Core principles
+## Build plan
 
-1. **Local by default**  
-   Prefer on-device models, on-device memory, and on-device tool execution.
+### Step 1: Define the local runtime
 
-2. **Tool-driven actions**  
-   Let the assistant call explicit tools for file operations, app control, and task execution instead of guessing or acting silently.
+**Goal:** Choose the local model and execution approach.
 
-3. **Safe by default**  
-   Require confirmation for destructive or high-impact actions, especially when editing files, running commands, or interacting with apps.
+**Do this:**
 
-4. **Agentic, but bounded**  
-   Allow multi-step task execution while keeping clear task state, progress tracking, and human review points.
+- pick a local model runtime such as Ollama or another on-device inference server;
+- define a default coding-capable model;
+- confirm CPU/GPU requirements for the target machine;
+- decide how prompts, chat history, and tool instructions will be formatted.
 
-5. **Extensible**  
-   Support new skills, connectors, and local automations without rewriting the whole assistant.
+**Done when:**
+
+- Aethon can load a local model and answer a basic prompt.
+
+### Step 2: Build the chat core
+
+**Goal:** Make the assistant answer questions reliably.
+
+**Do this:**
+
+- create a conversation loop;
+- preserve short-term context;
+- add system instructions that explain Aethon’s role;
+- keep responses concise and actionable;
+- add fallback behavior when the model is unavailable.
+
+**Done when:**
+
+- Aethon can hold a basic conversation without tools.
+
+### Step 3: Add local memory
+
+**Goal:** Store useful information on the user’s machine.
+
+**Do this:**
+
+- store preferences and facts locally;
+- separate temporary chat state from persistent memory;
+- add commands for remembering and forgetting items;
+- make memory searchable and editable.
+
+**Done when:**
+
+- Aethon can remember user preferences and recall them later.
+
+### Step 4: Add safe code assistance
+
+**Goal:** Let Aethon help with development work.
+
+**Do this:**
+
+- add code generation prompts;
+- support file reading and summarizing;
+- support editing files only after confirmation;
+- expose code review and refactoring helpers;
+- avoid automatically executing generated code.
+
+**Done when:**
+
+- Aethon can explain code, propose changes, and prepare file edits safely.
+
+### Step 5: Add task planning
+
+**Goal:** Turn a user request into a sequence of steps.
+
+**Do this:**
+
+- add a planner that splits goals into smaller tasks;
+- define task status states such as pending, active, blocked, and done;
+- track what the assistant has already done;
+- summarize progress after each task.
+
+**Done when:**
+
+- Aethon can take a goal and produce a clear task list.
+
+### Step 6: Add app control tools
+
+**Goal:** Let Aethon interact with supported desktop apps.
+
+**Do this:**
+
+- create tools for opening and focusing apps;
+- add window switching and basic UI automation;
+- limit actions to approved workflows;
+- require confirmation for sensitive actions;
+- log each action locally.
+
+**Done when:**
+
+- Aethon can open and control at least a few target apps safely.
+
+### Step 7: Add agent execution
+
+**Goal:** Let Aethon work through multi-step tasks.
+
+**Do this:**
+
+- add an agent loop that can plan, act, and report;
+- let the agent request approval before risky steps;
+- support retrying failed steps;
+- show the user what the agent is doing in real time.
+
+**Done when:**
+
+- Aethon can complete multi-step tasks with human oversight.
+
+### Step 8: Add workflow skills
+
+**Goal:** Make Aethon more useful for repeated tasks.
+
+**Do this:**
+
+- create reusable skills for common app workflows;
+- add templates for frequent goals;
+- support local document search and summarization;
+- allow custom user-defined skills.
+
+**Done when:**
+
+- Aethon can reuse task patterns instead of starting from scratch every time.
 
 ## Suggested architecture
 
-### 1. Local language model layer
+### Assistant core
 
-- Run the main reasoning model locally through an on-device inference server.
-- Use a model that can handle general chat and coding assistance well.
-- Keep prompts concise and structured so the assistant can reliably choose tools.
+Responsible for conversation, reasoning, memory lookup, and tool selection.
 
-### 2. Conversation and memory layer
+### Tool layer
 
-- Store long-term memory locally.
-- Save user preferences, recurring instructions, and approved task context.
-- Keep short-term conversation state separate from persistent memory.
+Provides controlled actions for files, apps, terminal commands, and task operations.
 
-### 3. Tool and skill layer
+### Agent layer
 
-Use explicit tools for:
+Handles planning, step execution, approvals, retries, and progress reporting.
 
-- file reading and writing;
-- terminal commands;
-- app launching and window focus;
-- browser or web actions if needed;
-- code scaffolding;
-- task creation and progress updates.
+### Memory layer
 
-### 4. Agent orchestration layer
+Stores preferences, facts, task context, and skill notes locally.
 
-- Turn a user goal into a sequence of subtasks.
-- Track task status, dependencies, and completion.
-- Allow the assistant to pause for approval when a step is risky or ambiguous.
-- Summarize progress after each step.
+### UI layer
 
-### 5. UI and input layer
+Shows chat, tool activity, task state, and assistant responses.
 
-- Support typed chat first.
-- Add voice input and spoken output as optional interfaces.
-- Show active task state and tool activity clearly so users know what the assistant is doing.
+## Safety rules
 
-## Capability areas
+- Keep local processing as the default.
+- Ask before destructive actions.
+- Do not auto-run code unless the user explicitly allows it.
+- Log important actions locally.
+- Make it easy to review or undo work.
 
-### Question answering
+## Suggested project phases for Aethon
 
-Jarvis should be able to answer normal questions using the local model, memory, and optional local documents.
-
-### Coding assistance
-
-Jarvis should support:
-
-- code explanation;
-- code generation;
-- refactoring suggestions;
-- file edits through controlled tools;
-- project navigation and summaries.
-
-### App control
-
-Jarvis should be able to:
-
-- open applications;
-- switch between running apps;
-- fill forms or navigate supported workflows;
-- automate common desktop tasks where safe.
-
-This should be done through explicit app-control tools, not by uncontrolled self-execution.
-
-### Task agents
-
-Jarvis should support agent-style work such as:
-
-- "set up a new project";
-- "review these files and summarize changes";
-- "organize this work into steps and complete them one by one".
-
-Each agent should:
-
-- receive a clear objective;
-- create a short plan;
-- execute approved steps;
-- report results and any blockers.
-
-## Safety and privacy
-
-- Keep all core reasoning local when possible.
-- Avoid sending private data to external services unless the user explicitly allows it.
-- Require confirmation before deleting files, sending messages, purchasing items, or taking other sensitive actions.
-- Log tool use locally so actions can be reviewed.
-
-## Practical implementation stages
-
-### Stage 1: Local chat and code help
-
-- local model integration;
-- reliable prompt formatting;
-- safe file read/write tools;
-- code generation and code review support.
-
-### Stage 2: App control
-
-- app launch and focus commands;
-- window and workflow automation;
-- higher-level desktop actions.
-
-### Stage 3: Task agents
-
-- task planner;
-- step execution engine;
-- progress tracking;
-- approval checkpoints.
-
-### Stage 4: Local knowledge and workflow skills
-
-- document retrieval;
-- project-specific memory;
-- reusable skills/connectors;
-- task templates.
+1. Local chat and memory
+2. Safe coding help
+3. App control
+4. Task planning and agent workflows
+5. Reusable skills and local document support
 
 ## Outcome
 
-With these pieces in place, Jarvis can become a local AI command center that feels closer to Codex-style assistance while remaining private, controlled, and extensible.
+If built in this order, Aethon becomes a practical local assistant that feels Codex-like while staying private, controllable, and extensible.
