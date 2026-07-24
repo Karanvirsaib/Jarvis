@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JARVIS — Obsidian</title>
+  <link rel="stylesheet" href="styles.css?v=20260724-cache-v1">
+</head>
+<body>
+  <div id="bridge-gate" class="bridge-gate" role="status" aria-live="polite">
+    <div class="gate-core"><i></i><i></i><i></i><span>J</span></div>
+    <strong>INITIALIZING JARVIS</strong>
+    <p>Secure desktop bridge handshake</p>
+    <div class="gate-progress"><span></span></div>
+  </div>
+  <div class="noise"></div>
+  <aside class="nav-rail">
+    <div class="wordmark">JARVIS</div><div class="gold-rule"></div>
+    <nav>
+      <button class="nav-item active" data-view="home" aria-label="Home"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10" opacity=".35"/></svg><span>Home</span></button>
+      <button class="nav-item" data-view="conversation" aria-label="Conversation"><svg viewBox="0 0 24 24"><path d="M12 2l1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7z"/></svg><span>Conversation</span></button>
+      <button class="nav-item" data-command="data help" aria-label="Data"><svg viewBox="0 0 24 24"><path d="M5 18V9m7 9V4m7 14v-6"/></svg><span>Data</span></button>
+      <button class="nav-item" data-command="show memory" aria-label="Memory"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg><span>Memory</span></button>
+      <button class="nav-item" data-command="code help" aria-label="Code"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5m8-10l5 5-5 5"/></svg><span>Code</span></button>
+      <button class="nav-item" id="tasks-nav" aria-label="Tasks"><svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11M3.5 6l1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"/></svg><span>Tasks</span></button>
+      <button class="nav-item" id="resume-nav" aria-label="Resume"><svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 10h6M9 14h6M9 18h4"/></svg><span>Resume</span></button>
+    </nav>
+    <div class="nav-bottom"><button class="avatar">K</button><button class="nav-item" data-command="system status" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10l2 2M19 5l-2 2M7 17l-2 2"/></svg><span>System</span></button></div>
+  </aside>
+
+  <main>
+    <section id="home-view" class="view active">
+      <div class="ambient-lines"></div>
+      <div class="hero">
+        <button class="orb-wrap" id="hero-orb" aria-label="Speak to Jarvis">
+          <canvas id="orb-wave" class="orb-wave" width="760" height="220"></canvas>
+          <div class="orb-rings"><i></i><i></i><i></i></div>
+          <div class="orb"><div class="orb-stars"></div><div class="orb-shine"></div></div>
+          <span class="orb-hint">CLICK TO SPEAK</span>
+        </button>
+        <div class="eyebrow"><span></span> ONLINE AND READY <span></span></div>
+        <h1><span id="greeting">Good evening,</span> <em>Karan.</em></h1>
+        <p class="subtitle">What would you like to create?</p>
+        <div class="action-cards">
+          <button class="action-card cyan" data-view="conversation"><div class="card-icon chat-icon"></div><h3>Start a conversation</h3><p>Ask anything, brainstorm,<br>or talk it through.</p><b>→</b></button>
+          <button class="action-card violet" id="dataset-card"><div class="card-icon bars-icon"><i></i><i></i><i></i><i></i></div><h3>Analyze a dataset</h3><p>Find insights, trends,<br>and hidden opportunities.</p><b>→</b></button>
+          <button class="action-card gold" id="resume-card"><div class="card-icon cube-icon"></div><h3>Tailor my resume</h3><p>Match a job description<br>without inventing facts.</p><b>→</b></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="conversation-view" class="view">
+      <header class="conversation-head">
+        <div class="mini-orb"><span></span></div>
+        <div><div class="eyebrow left">ACTIVE SESSION</div><h2>Working with Jarvis</h2></div>
+        <div class="mode-switch top-mode"><button class="selected" data-mode="fast">FAST</button><button data-mode="deep">DEEP</button></div>
+      </header>
+      <div id="transcript" class="transcript">
+        <article class="message jarvis"><div class="message-meta"><span class="message-mark"></span>JARVIS <time></time></div><p>Online and ready. What shall we work on?</p></article>
+      </div>
+      <aside id="task-panel" class="task-panel" aria-label="Task workspace">
+        <header><div><span>AGENT WORKSPACE</span><h3>Active Task</h3></div><div class="task-head-actions"><button id="new-task" aria-label="Create task">＋</button><button id="close-tasks" aria-label="Close tasks">×</button></div></header>
+        <section id="task-composer" class="task-composer">
+          <label for="task-goal">WHAT SHOULD JARVIS ACCOMPLISH?</label>
+          <textarea id="task-goal" rows="4" placeholder="Analyze the attached sales data and create a chart…"></textarea>
+          <button id="plan-task" class="plan-task">PLAN TASK</button>
+          <div id="plan-preview" class="plan-preview"></div>
+          <div class="composer-actions"><button id="discard-plan">DISCARD</button><button id="start-task" disabled>START TASK</button></div>
+        </section>
+        <div id="task-content" class="task-content"><div class="task-empty"><i>◎</i><strong>No active task</strong><p>Type <b>create task:</b> followed by semicolon-separated steps.</p></div></div>
+        <div class="task-history"><label>RECENT TASKS</label><div id="task-history-list"></div></div>
+      </aside>
+    </section>
+
+    <footer class="command-dock">
+      <button id="attach" class="dock-icon" aria-label="Attach file"><svg viewBox="0 0 24 24"><path d="M8 12.5l6.2-6.2a3 3 0 014.2 4.2l-8.5 8.4a5 5 0 01-7.1-7l8.6-8.6"/></svg></button>
+      <input id="prompt" placeholder="Type or speak…" autocomplete="off">
+      <button id="mic" class="mic" aria-label="Talk to Jarvis"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg><span></span></button>
+      <div class="mode-switch"><button class="selected" data-mode="fast">FAST</button><button data-mode="deep">DEEP</button></div>
+      <button id="send" class="send" aria-label="Send">↗</button>
+    </footer>
+    <div id="status" class="status"><span></span> ONLINE AND READY</div>
+  </main>
+
+  <aside class="ambient-rail">
+    <div class="moon">☾</div><div class="clock" id="clock">10:42</div><div class="date" id="date">Saturday, May 18</div>
+    <div class="rail-rule"></div>
+    <section><label>MODEL</label><div class="system-row"><div class="node-icon cyan-node">⌘</div><div><strong>QWEN3:8B</strong><small>Local <i></i></small></div></div></section>
+    <div class="rail-rule"></div>
+    <section><label>MEMORY</label><div class="memory-ring"><span>72%</span></div><p>Context window<br><b>128K</b></p></section>
+    <div class="rail-rule"></div>
+    <section class="listen-section"><label>LISTENING</label><button id="rail-listen" class="listening-ring"><span class="eq"><i></i><i></i><i></i><i></i><i></i></span></button><p id="listen-label">Tap the orb to speak</p></section>
+    <label class="speak-toggle"><input id="speak-answers" type="checkbox"><span></span> Speak answers</label>
+  </aside>
+  <script src="app.js?v=20260724-composer-v1"></script>
+</body>
+</html>

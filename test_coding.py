@@ -12,8 +12,16 @@ class LocalCoderTests(unittest.TestCase):
 
         result = coder.generate_python("print hello")
 
-        self.assertIn("python", result)
+        self.assertEqual(result, "print('hello')")
         self.assertTrue(llm.ask.call_args.kwargs["deep_reasoning"])
+
+    def test_python_generation_discards_notes_outside_fence(self) -> None:
+        llm = Mock()
+        llm.ask.return_value = "Here you go:\n```python\nprint('clean')\n```\nRun it with Python."
+
+        result = LocalCoder(llm).generate_python("print clean")
+
+        self.assertEqual(result, "print('clean')")
 
     def test_sql_prompt_contains_loaded_schema(self) -> None:
         llm = Mock()

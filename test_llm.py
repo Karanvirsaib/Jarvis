@@ -28,6 +28,18 @@ class LLMClientTests(unittest.TestCase):
         self.assertTrue(call.kwargs["think"])
         self.assertEqual(call.kwargs["options"]["num_predict"], 200)
 
+    @patch("core.llm.chat")
+    def test_warm_up_loads_model_with_minimal_generation(self, mocked_chat) -> None:
+        mocked_chat.return_value.message.content = "Ready"
+        client = LLMClient()
+
+        self.assertTrue(client.warm_up())
+
+        call = mocked_chat.call_args
+        self.assertFalse(call.kwargs["think"])
+        self.assertEqual(call.kwargs["options"]["num_predict"], 1)
+        self.assertEqual(client.warm_status(), {"complete": True, "ready": True})
+
 
 if __name__ == "__main__":
     unittest.main()

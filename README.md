@@ -1,10 +1,17 @@
 # J.A.R.V.I.S.
 
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Ollama](https://img.shields.io/badge/AI-Local%20Ollama-111111)](https://ollama.com/)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows11&logoColor=white)](#requirements)
+[![Tests](https://img.shields.io/badge/tests-42%20passing-3AA76D)](#testing)
+
 > A local-first personal AI assistant with voice, memory, data analysis, code generation, and a cinematic desktop command center.
 
 Jarvis is a Windows-focused Python assistant powered by local Ollama models. It combines natural conversation with persistent memory, microphone input, human-friendly speech, spreadsheet analysis, safe code generation, and an animated science-fiction interface.
 
 The project is designed around a simple principle: personal assistance should remain on your machine whenever possible.
+
+![Jarvis Obsidian command center](docs/screenshots/jarvis-dashboard.png)
 
 ## Highlights
 
@@ -17,8 +24,15 @@ The project is designed around a simple principle: personal assistance should re
 - **Code generation** — generate Python and SQL without automatically executing untrusted code.
 - **Intent interpretation** — understands informal, incomplete, and misspelled analysis requests.
 - **Local learning** — teach Jarvis phrases and mark answers as helpful or incorrect.
+- **ATS resume tailoring** — match a real resume to a job description, report unsupported requirements as gaps, and export Word or PDF without changing official titles or inventing achievements.
+- **Grounded web research** — searches public sources, extracts evidence, and returns linked citations instead of guessing.
+- **Confirmed desktop actions** — previews allowlisted Windows actions, requires explicit approval, and records a local audit trail.
 
 ## Interface
+
+<p align="center">
+  <img src="docs/screenshots/jarvis-conversation.png" alt="Jarvis conversation workspace" width="92%">
+</p>
 
 The Version 1 desktop experience includes:
 
@@ -41,6 +55,9 @@ flowchart LR
     Intent --> Analysis["Data Analysis Engine"]
     Intent --> Code["Safe Code Generator"]
     Analysis --> Files["CSV and Excel Files"]
+    Assistant --> Research["Grounded Web Research"]
+    Assistant --> Resume["ATS Resume Tailor"]
+    Resume --> Documents["Word and PDF"]
     Assistant --> Speech["Neural or Offline Speech"]
 ```
 
@@ -53,6 +70,16 @@ flowchart LR
 - Internet access only for Google speech recognition and the optional neural voice
 
 Typed chat, Ollama reasoning, memory, and dataset analysis remain local.
+Resume source files and job descriptions are processed locally by the configured Ollama model. Tailored files are written under `output/resumes` for Word and `output/pdf` for PDF.
+
+### Tailor a resume
+
+1. Open **Resume** in the desktop navigation and select the current `.docx`, `.pdf`, or `.txt` resume.
+2. Paste the complete posting as `tailor resume: <job description>`.
+3. Review Jarvis's matched keywords and honest gaps.
+4. Use `export resume word` or `export resume pdf`.
+
+The source resume is the factual boundary: Jarvis may reorganize and rephrase supported experience, but it blocks unsupported employer names, employment titles, and dates. Personal projects remain projects. Always review the final document before submitting it.
 
 ## Installation
 
@@ -118,7 +145,34 @@ system status
 morning briefing
 deep mode
 think deeply: explain how neural networks learn
+search web: latest RBI repo rate
+verify online: current WHO guidance on hypertension
 ```
+
+### Confirmed actions
+
+```text
+open calculator
+open notepad
+open file explorer
+open calendar
+confirm action
+cancel action
+action history
+```
+
+Low-risk application launches run immediately and are recorded in SQLite. The
+confirmation framework remains available for future actions that modify files,
+send messages, or change external data.
+For other commands such as `open Spotify`, Jarvis searches Start Menu shortcuts,
+registered Windows application paths, and executables on `PATH`. It refuses weak
+or ambiguous matches instead of guessing which program to launch.
+
+Jarvis automatically invokes web research for explicitly current questions and when
+the local model declares that it lacks reliable knowledge. Research answers are
+restricted to retrieved evidence, include numbered source links, and report when a
+claim cannot be verified. Web access improves freshness but cannot guarantee that
+every published source is correct; primary and official sources are ranked first.
 
 ### Memory and learning
 
@@ -193,7 +247,7 @@ Jarvis is configured with environment variables:
 | `JARVIS_LISTEN_TIMEOUT` | `5` | Seconds to wait for microphone input |
 | `JARVIS_PHRASE_TIME_LIMIT` | `15` | Maximum spoken-command duration |
 | `JARVIS_OLLAMA_KEEP_ALIVE` | `30m` | Time Ollama keeps the model loaded |
-| `JARVIS_MAX_RESPONSE_TOKENS` | `384` | Standard response-token budget |
+| `JARVIS_MAX_RESPONSE_TOKENS` | `192` | Fast-mode response budget; lower values return sooner |
 | `JARVIS_NEURAL_VOICE` | `en-GB-RyanNeural` | Edge TTS voice |
 | `JARVIS_NEURAL_VOICE_RATE` | `+0%` | Neural speech speed adjustment |
 | `JARVIS_NEURAL_VOICE_PITCH` | `-2Hz` | Neural speech pitch adjustment |

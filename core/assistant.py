@@ -5,17 +5,45 @@ from core.coding import LocalCoder
 from core.llm import LLMClient
 from core.memory import MemoryManager
 from core.intent import Intent, IntentInterpreter
+from core.research import WebResearcher
+from core.resume import ResumeTailor
+from core.actions import ActionManager
+from core.tasks import (
+    InvalidTaskTransitionError,
+    IntelligentPlanner,
+    JsonTaskStore,
+    TaskNotFoundError,
+    TaskService,
+)
+from core.tasks.integrations import create_jarvis_registry
 from datetime import datetime
+from pathlib import Path
 import re
 
 
 class JarvisAssistant:
-    def __init__(self, memory: MemoryManager, llm: LLMClient) -> None:
+    def __init__(
+        self,
+        memory: MemoryManager,
+        llm: LLMClient,
+        task_path: str | Path | None = None,
+    ) -> None:
         self.memory = memory
         self.llm = llm
         self.analyst = DataAnalyst()
         self.coder = LocalCoder(llm)
         self.interpreter = IntentInterpreter(llm)
+        self.researcher = WebResearcher(llm)
+        self.resume = ResumeTailor(memory, llm)
+        self.actions = ActionManager(memory)
+        resolved_task_path = Path(task_path) if task_path else memory.database_path.with_name("tasks.json")
+        task_tools = create_jarvis_registry(self)
+        task_planner = IntelligentPlanner(llm, task_tools)
+        self.tasks = TaskService(
+            JsonTaskStore(resolved_task_path),
+            tools=task_tools,
+            planner=task_planner,
+        )
         self.history: list[dict[str, str]] = []
         self.intelligence_mode = "fast"
         self.last_interaction_id: int | None = None
@@ -45,6 +73,35 @@ class JarvisAssistant:
         lowered = text.lower()
         if not text:
             return "I didn't receive a command."
+
+        task_response = self._task_command(text)
+        if task_response is not None:
+            return task_response
+
+        if lowered.startswith("confirm action"):
+            action_id = text[len("confirm action"):].strip() or None
+            return self.actions.confirm(action_id)
+        if lowered in {"cancel action", "reject action", "do not run it"}:
+            return self.actions.cancel()
+        if lowered in {"action preview", "pending action"}:
+            return self.actions.preview()
+        if lowered in {"action history", "recent actions"}:
+            actions = self.memory.recent_actions()
+            if not actions:
+                return "No actions have been requested yet."
+            return "ACTION HISTORY\n" + "\n".join(
+                f"- {item['created_at']} | {item['action']} | {item['status']} | {item['id']}"
+                for item in actions
+            )
+        action_name = self._requested_action(lowered)
+        if action_name:
+            return self.actions.execute(action_name)
+        app_match = re.fullmatch(r"(?:open|launch)(?: the)? (.+)", text, flags=re.IGNORECASE)
+        if app_match:
+            try:
+                return self.actions.execute_application(app_match.group(1).strip())
+            except ValueError as exc:
+                return str(exc)
 
         if lowered in {"good answer", "that was helpful"}:
             if self.last_interaction_id and self.memory.rate_interaction(self.last_interaction_id, 1):
@@ -93,8 +150,50 @@ class JarvisAssistant:
                 "Core systems: conversation, persistent memory, local learning, voice, "
                 "CSV/Excel analysis, charts, read-only SQL, and Python/SQL generation.\n"
                 "Try 'morning briefing', 'system status', 'show memory', 'data help', "
-                "'code help', or 'capabilities'."
+                "'code help', 'resume help', 'action help', or 'capabilities'."
             )
+        if lowered == "action help":
+            return (
+                "Desktop actions:\n"
+                "- open calculator\n- open notepad\n- open file explorer\n- open calendar\n"
+                "Application launches run immediately and are recorded locally.\n"
+                "Use 'action history' to inspect the local audit trail."
+            )
+        if lowered in {"resume help", "cv help"}:
+            return (
+                "ATS RESUME WORKFLOW\n"
+                "1. Attach your current .docx, .pdf, or .txt resume, or use: load resume \"C:\\path\\resume.docx\"\n"
+                "2. Paste the full role posting with: tailor resume: <job description>\n"
+                "3. Review the matched keywords and honest gaps.\n"
+                "4. Say: export resume word — or — export resume pdf\n"
+                "Jarvis preserves official titles and source facts; unsupported requirements are reported as gaps, never invented."
+            )
+        if lowered == "resume status":
+            return self.resume.status()
+        if lowered.startswith("load resume "):
+            path = text[len("load resume "):].strip().strip('"')
+            try:
+                return self.resume.load(path)
+            except (FileNotFoundError, ValueError, RuntimeError) as exc:
+                return str(exc)
+        if lowered.startswith("tailor resume:") or lowered.startswith("tailor cv:"):
+            description = text.split(":", 1)[1].strip()
+            try:
+                return self.resume.tailor(description)
+            except (ValueError, RuntimeError) as exc:
+                return str(exc)
+        if lowered in {"export resume word", "export resume docx", "create resume word"}:
+            try:
+                path = self.resume.export("word")
+                return f"ATS-friendly Word resume created: {path}"
+            except (ValueError, RuntimeError) as exc:
+                return str(exc)
+        if lowered in {"export resume pdf", "create resume pdf"}:
+            try:
+                path = self.resume.export("pdf")
+                return f"ATS-friendly PDF resume created: {path}"
+            except (ValueError, RuntimeError) as exc:
+                return str(exc)
         if lowered in {"capabilities", "show capabilities", "what can you do"}:
             return (
                 "ACTIVE MODULES\n"
@@ -103,11 +202,17 @@ class JarvisAssistant:
                 "- Voice input plus offline/neural spoken responses\n"
                 "- CSV and Excel analysis, charts, correlations, and read-only SQL\n"
                 "- Safe Python and SQL code generation (never auto-executed)\n"
-                "- Local morning briefings and system status\n\n"
+                "- Local morning briefings and system status\n"
+                "- Evidence-grounded web research with source links\n\n"
+                "- Confirmed Windows actions with previews and a local audit trail\n"
+                "- Truth-constrained ATS resume tailoring with Word and PDF export\n\n"
                 "PLANNED / REQUIRES CONNECTIONS\n"
-                "- Calendar and email digest, scheduled monitors, deep web research, "
+                "- Calendar and email digest, scheduled monitors, "
                 "document indexing, and a broader installable skills catalog."
             )
+        web_query = self._web_query(text)
+        if web_query:
+            return self.researcher.research(web_query)
         if lowered in {"system status", "status report", "diagnostic"}:
             stats = self.memory.learning_stats()
             dataset = self.analyst.dataset
@@ -201,6 +306,9 @@ class JarvisAssistant:
             self.history[-8:],
             deep_reasoning=one_time_deep or self.intelligence_mode == "deep",
         )
+        if response.strip().upper().startswith("NEEDS_WEB:"):
+            query = response.split(":", 1)[1].strip() or prompt
+            response = self.researcher.research(query)
         self.history.extend(
             [
                 {"role": "user", "content": text},
@@ -208,6 +316,72 @@ class JarvisAssistant:
             ]
         )
         return response
+
+    def _task_command(self, text: str) -> str | None:
+        lowered = text.casefold().strip()
+        try:
+            if lowered in {"task help", "tasks help"}:
+                return (
+                    "TASK COMMANDS\n"
+                    "- create task: <step one; step two>\n"
+                    "- task status [task ID]\n- show tasks\n"
+                    "- resume task [task ID]\n- approve step <step ID>\n"
+                    "- retry step <step ID>\n- cancel task [task ID]"
+                )
+            if lowered.startswith("create task:"):
+                goal = text.split(":", 1)[1].strip()
+                return self.tasks.format(self.tasks.create(goal))
+            if lowered in {"show tasks", "task history", "list tasks"}:
+                return self.tasks.format_list()
+            if lowered == "task status" or lowered.startswith("task status "):
+                task_id = text[len("task status"):].strip() or None
+                return self.tasks.format(self.tasks.get(task_id))
+            if lowered == "resume task" or lowered.startswith("resume task "):
+                task_id = text[len("resume task"):].strip() or None
+                return self.tasks.format(self.tasks.resume(task_id))
+            if lowered.startswith("approve step "):
+                step_id = text[len("approve step "):].strip()
+                return self.tasks.format(self.tasks.approve(step_id))
+            if lowered.startswith("retry step "):
+                step_id = text[len("retry step "):].strip()
+                return self.tasks.format(self.tasks.retry(step_id))
+            if lowered == "cancel task" or lowered.startswith("cancel task "):
+                task_id = text[len("cancel task"):].strip() or None
+                return self.tasks.format(self.tasks.cancel(task_id))
+        except (TaskNotFoundError, LookupError, InvalidTaskTransitionError, ValueError) as exc:
+            return f"Task request could not be completed: {exc}"
+        return None
+
+    @staticmethod
+    def _web_query(text: str) -> str | None:
+        lowered = text.casefold().strip()
+        for prefix in ("search web:", "web search:", "research:", "look up:", "verify online:"):
+            if lowered.startswith(prefix):
+                return text[len(prefix):].strip()
+        current_signals = (
+            "latest", "today", "currently", "current price", "current rate", "recent news",
+            "this week", "this month", "as of now", "live score", "weather forecast",
+        )
+        if any(signal in lowered for signal in current_signals):
+            return text
+        return None
+
+    @staticmethod
+    def _requested_action(lowered: str) -> str | None:
+        exact_commands = {
+            "open calculator": "calculator",
+            "launch calculator": "calculator",
+            "open notepad": "notepad",
+            "launch notepad": "notepad",
+            "open file explorer": "file_explorer",
+            "launch file explorer": "file_explorer",
+            "open explorer": "file_explorer",
+            "open calendar": "calendar",
+            "launch calendar": "calendar",
+            "open calender": "calendar",
+            "launch calender": "calendar",
+        }
+        return exact_commands.get(lowered.strip())
 
     @staticmethod
     def _day_period() -> str:
