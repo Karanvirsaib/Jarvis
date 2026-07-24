@@ -39,9 +39,68 @@ class JarvisBridge:
     def respond(self, command: str) -> dict[str, str]:
         try:
             answer = self._assistant.respond(command.strip())
-            return {"ok": "true", "answer": answer}
+            pending = self._assistant.actions.status()
+            return {
+                "ok": "true",
+                "answer": answer,
+                "requires_confirmation": "true" if pending else "false",
+                "action_id": pending["id"] if pending else "",
+            }
         except Exception as exc:
             return {"ok": "false", "answer": f"I couldn't complete that request: {exc}"}
+
+    def confirm_action(self, action_id: str) -> dict[str, str]:
+        """Confirm silently from the UI while preserving the action audit record."""
+        try:
+            message = self._assistant.actions.confirm(action_id.strip())
+            ok = message.startswith("Completed:")
+            return {"ok": "true" if ok else "false", "message": message}
+        except Exception as exc:
+            return {"ok": "false", "message": f"Action failed safely: {exc}"}
+
+    def cancel_action(self, action_id: str) -> dict[str, str]:
+        """Cancel silently from the UI while preserving the action audit record."""
+        pending = self._assistant.actions.status()
+        if pending is None or pending["id"] != action_id.strip():
+            return {"ok": "false", "message": "The pending action no longer matches."}
+        return {"ok": "true", "message": self._assistant.actions.cancel()}
+
+    def create_task(self, goal: str) -> dict:
+        return self._task_result(lambda: self._assistant.tasks.create(goal))
+
+    def plan_task(self, goal: str) -> dict:
+        return self._task_result(lambda: self._assistant.tasks.preview(goal))
+
+    def start_task(self, goal: str, steps: list[dict]) -> dict:
+        return self._task_result(
+            lambda: self._assistant.tasks.create_from_plan(goal, steps)
+        )
+
+    def task_status(self, task_id: str = "") -> dict:
+        return self._task_result(lambda: self._assistant.tasks.get(task_id or None))
+
+    def list_tasks(self) -> dict:
+        try:
+            tasks = [self._assistant.tasks.snapshot(task) for task in self._assistant.tasks.list()]
+            return {"ok": "true", "tasks": tasks}
+        except Exception as exc:
+            return {"ok": "false", "message": str(exc), "tasks": []}
+
+    def resume_task(self, task_id: str = "") -> dict:
+        return self._task_result(lambda: self._assistant.tasks.resume(task_id or None))
+
+    def approve_task_step(self, step_id: str, task_id: str = "") -> dict:
+        return self._task_result(
+            lambda: self._assistant.tasks.approve(step_id, task_id or None)
+        )
+
+    def retry_task_step(self, step_id: str, task_id: str = "") -> dict:
+        return self._task_result(
+            lambda: self._assistant.tasks.retry(step_id, task_id or None)
+        )
+
+    def cancel_task(self, task_id: str = "") -> dict:
+        return self._task_result(lambda: self._assistant.tasks.cancel(task_id or None))
 
     def set_mode(self, mode: str) -> dict[str, str]:
         try:
@@ -103,6 +162,13 @@ class JarvisBridge:
                 settings.neural_voice_rate, settings.neural_voice_pitch,
             )
         return self._voice_client
+
+    def _task_result(self, operation) -> dict:
+        try:
+            task = operation()
+            return {"ok": "true", "task": self._assistant.tasks.snapshot(task)}
+        except Exception as exc:
+            return {"ok": "false", "message": str(exc)}
 
 
 def run_desktop(assistant: JarvisAssistant) -> None:

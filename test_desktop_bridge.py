@@ -8,6 +8,37 @@ from ui.desktop import JarvisBridge
 
 
 class AssistantStub:
+    class Actions:
+        @staticmethod
+        def status(): return None
+        @staticmethod
+        def confirm(action_id): return f"Completed: {action_id}."
+        @staticmethod
+        def cancel(): return "Cancelled."
+    actions = Actions()
+    class Tasks:
+        task = types.SimpleNamespace(id="task-1")
+        @classmethod
+        def create(cls, goal): return cls.task
+        @classmethod
+        def preview(cls, goal): return cls.task
+        @classmethod
+        def create_from_plan(cls, goal, steps): return cls.task
+        @classmethod
+        def get(cls, task_id=None): return cls.task
+        @classmethod
+        def list(cls): return [cls.task]
+        @classmethod
+        def resume(cls, task_id=None): return cls.task
+        @classmethod
+        def approve(cls, step_id, task_id=None): return cls.task
+        @classmethod
+        def retry(cls, step_id, task_id=None): return cls.task
+        @classmethod
+        def cancel(cls, task_id=None): return cls.task
+        @staticmethod
+        def snapshot(task): return {"id": task.id, "status": "pending"}
+    tasks = Tasks()
     def respond(self, command): return f"received: {command}"
     def set_intelligence_mode(self, mode): return f"{mode} enabled"
 
@@ -54,6 +85,23 @@ class DesktopBridgeTests(unittest.TestCase):
             self.assertEqual(bridge.choose_dataset()["path"], "sample.csv")
             bridge._window = WindowStub("resume.docx")
             self.assertEqual(bridge.choose_resume()["path"], "resume.docx")
+
+    def test_action_controls_use_silent_bridge_methods(self):
+        bridge = JarvisBridge(AssistantStub())
+        bridge._assistant.actions.status = lambda: {"id": "abc"}
+        self.assertEqual(bridge.confirm_action("abc")["ok"], "true")
+        self.assertEqual(bridge.cancel_action("abc")["ok"], "true")
+
+    def test_task_lifecycle_is_exposed_as_structured_bridge_data(self):
+        bridge = JarvisBridge(AssistantStub())
+        self.assertEqual(bridge.create_task("Build report")["task"]["id"], "task-1")
+        self.assertEqual(bridge.plan_task("Build report")["task"]["id"], "task-1")
+        self.assertEqual(bridge.start_task("Build report", [])["task"]["id"], "task-1")
+        self.assertEqual(bridge.task_status()["task"]["status"], "pending")
+        self.assertEqual(bridge.list_tasks()["tasks"][0]["id"], "task-1")
+        self.assertEqual(bridge.approve_task_step("step-1")["ok"], "true")
+        self.assertEqual(bridge.retry_task_step("step-1")["ok"], "true")
+        self.assertEqual(bridge.cancel_task()["ok"], "true")
 
 
 if __name__ == "__main__":

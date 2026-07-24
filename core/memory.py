@@ -29,6 +29,12 @@ class MemoryManager:
             "phrase TEXT PRIMARY KEY, command TEXT NOT NULL, "
             "uses INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP)"
         )
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS action_audit ("
+            "id TEXT PRIMARY KEY, action_name TEXT NOT NULL, preview TEXT NOT NULL, "
+            "risk TEXT NOT NULL, status TEXT NOT NULL, detail TEXT DEFAULT '', "
+            "created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+        )
         self.connection.commit()
 
     def remember(self, key: str, value: str) -> None:
@@ -173,6 +179,42 @@ class MemoryManager:
             self.connection.execute("DELETE FROM interactions")
             self.connection.execute("DELETE FROM learned_commands")
             self.connection.commit()
+
+    def record_action(
+        self, action_id: str, action_name: str, preview: str, status: str, risk: str
+    ) -> None:
+        with self._lock:
+            self.connection.execute(
+                "INSERT INTO action_audit (id, action_name, preview, risk, status) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (action_id, action_name, preview, risk, status),
+            )
+            self.connection.commit()
+
+    def update_action(self, action_id: str, status: str, detail: str = "") -> None:
+        with self._lock:
+            self.connection.execute(
+                "UPDATE action_audit SET status = ?, detail = ?, "
+                "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (status, detail, action_id),
+            )
+            self.connection.commit()
+
+    def recent_actions(self, limit: int = 10) -> list[dict[str, str]]:
+        safe_limit = max(1, min(int(limit), 50))
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT id, action_name, risk, status, detail, created_at "
+                "FROM action_audit ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                (safe_limit,),
+            ).fetchall()
+        return [
+            {
+                "id": row[0], "action": row[1], "risk": row[2],
+                "status": row[3], "detail": row[4], "created_at": row[5],
+            }
+            for row in rows
+        ]
 
     @staticmethod
     def _normalize_phrase(text: str) -> str:

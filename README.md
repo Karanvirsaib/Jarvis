@@ -26,6 +26,7 @@ The project is designed around a simple principle: personal assistance should re
 - **Local learning** — teach Jarvis phrases and mark answers as helpful or incorrect.
 - **ATS resume tailoring** — match a real resume to a job description, report unsupported requirements as gaps, and export Word or PDF without changing official titles or inventing achievements.
 - **Grounded web research** — searches public sources, extracts evidence, and returns linked citations instead of guessing.
+- **Confirmed desktop actions** — previews allowlisted Windows actions, requires explicit approval, and records a local audit trail.
 
 ## Interface
 
@@ -147,6 +148,25 @@ think deeply: explain how neural networks learn
 search web: latest RBI repo rate
 verify online: current WHO guidance on hypertension
 ```
+
+### Confirmed actions
+
+```text
+open calculator
+open notepad
+open file explorer
+open calendar
+confirm action
+cancel action
+action history
+```
+
+Low-risk application launches run immediately and are recorded in SQLite. The
+confirmation framework remains available for future actions that modify files,
+send messages, or change external data.
+For other commands such as `open Spotify`, Jarvis searches Start Menu shortcuts,
+registered Windows application paths, and executables on `PATH`. It refuses weak
+or ambiguous matches instead of guessing which program to launch.
 
 Jarvis automatically invokes web research for explicitly current questions and when
 the local model declares that it lacks reliable knowledge. Research answers are

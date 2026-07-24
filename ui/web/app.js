@@ -1,6 +1,43 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = {busy:false, view:'home', listening:false, bridgeReady:false, modelMonitorStarted:false, pointerX:.5, pointerY:.5, pointerEnergy:0};
+const state = {busy:false, view:'home', listening:false, bridgeReady:false, modelMonitorStarted:false, taskPanelOpen:false, pointerX:.5, pointerY:.5, pointerEnergy:0};
+let taskDraft=null;
+const UI_CACHE_KEY='jarvis.ui.v1';
+const UI_CACHE_VERSION=1;
+const MAX_CACHED_MESSAGES=60;
+
+function readUiCache(){
+  try{
+    const cached=JSON.parse(localStorage.getItem(UI_CACHE_KEY)||'null');
+    return cached?.version===UI_CACHE_VERSION?cached:null;
+  }catch(e){return null}
+}
+function writeUiCache(patch={}){
+  try{
+    const previous=readUiCache()||{version:UI_CACHE_VERSION};
+    localStorage.setItem(UI_CACHE_KEY,JSON.stringify({...previous,...patch,version:UI_CACHE_VERSION}));
+  }catch(e){}
+}
+function cacheTranscript(){
+  const messages=$$('.message:not(.message-loading)').slice(-MAX_CACHED_MESSAGES).map(message=>({
+    role:message.classList.contains('user')?'user':'jarvis',
+    text:message.querySelector('p')?.innerText||'',
+  })).filter(message=>message.text);
+  writeUiCache({messages});
+}
+function restoreUiCache(){
+  const cached=readUiCache();if(!cached)return;
+  if(Array.isArray(cached.messages)&&cached.messages.length){
+    $('#transcript').replaceChildren();
+    cached.messages.slice(-MAX_CACHED_MESSAGES).forEach(message=>{
+      if((message.role==='user'||message.role==='jarvis')&&typeof message.text==='string')addMessage(message.role,message.text,false,false);
+    });
+  }
+  const mode=cached.mode==='deep'?'deep':'fast';
+  $$('.mode-switch button').forEach(button=>button.classList.toggle('selected',button.dataset.mode===mode));
+  $('#speak-answers').checked=cached.speakAnswers===true;
+  if(cached.view==='conversation')showView('conversation');
+}
 
 let desktopApi=null;
 let resolveBridge;
@@ -52,7 +89,129 @@ function showView(name){
   state.view=name;
   $$('.view').forEach(v=>v.classList.toggle('active',v.id===`${name}-view`));
   $$('.nav-item[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));
+  writeUiCache({view:name});
   if(name==='conversation') setTimeout(()=>$('#prompt').focus(),350);
+}
+function setTaskPanel(open){
+  state.taskPanelOpen=open;
+  $('#task-panel').classList.toggle('open',open);
+  $('#conversation-view').classList.toggle('task-open',open);
+  $('#tasks-nav').classList.toggle('active',open);
+  if(open){showView('conversation');refreshTasks()}
+}
+function setComposer(open){
+  $('#task-composer').classList.toggle('open',open);
+  $('#task-content').classList.toggle('composer-hidden',open);
+  $('.task-history').classList.toggle('composer-hidden',open);
+  if(open)setTimeout(()=>$('#task-goal').focus(),120);
+}
+function renderPlanPreview(task){
+  taskDraft=task;
+  const preview=$('#plan-preview');preview.replaceChildren();
+  task.steps.forEach((step,index)=>{
+    const row=document.createElement('div');row.className='plan-step';
+    const order=document.createElement('span');order.textContent=String(index+1).padStart(2,'0');
+    const copy=document.createElement('div');
+    const input=document.createElement('input');input.value=step.title;input.setAttribute('aria-label',`Step ${index+1} title`);
+    input.addEventListener('input',()=>{taskDraft.steps[index].title=input.value});
+    const meta=document.createElement('small');meta.textContent=step.tool+(step.requires_approval?' · APPROVAL REQUIRED':'');
+    const remove=document.createElement('button');remove.textContent='×';remove.setAttribute('aria-label',`Remove step ${index+1}`);
+    remove.addEventListener('click',()=>{taskDraft.steps.splice(index,1);renderPlanPreview(taskDraft)});
+    copy.append(input,meta);row.append(order,copy,remove);preview.append(row);
+  });
+  $('#start-task').disabled=!task.steps.length;
+}
+async function planTask(){
+  const goal=$('#task-goal').value.trim();if(!goal)return;
+  const bridge=await waitForApi('plan_task');if(!bridge)return;
+  $('#plan-task').disabled=true;$('#plan-task').textContent='PLANNING…';
+  $('#plan-preview').innerHTML='<div class="plan-skeleton"><i></i><i></i><i></i></div>';
+  try{
+    const result=await bridge.plan_task(goal);
+    if(result.ok==='true')renderPlanPreview(result.task);else{$('#plan-preview').textContent=result.message||'Planning failed.'}
+  }catch(e){$('#plan-preview').textContent='Jarvis could not create the plan.'}
+  finally{$('#plan-task').disabled=false;$('#plan-task').textContent='PLAN TASK'}
+}
+async function startPlannedTask(){
+  if(!taskDraft?.steps.length)return;
+  const bridge=await waitForApi('start_task');if(!bridge)return;
+  const steps=taskDraft.steps.map(({title,tool,arguments:args})=>({title,tool,arguments:args}));
+  $('#start-task').disabled=true;setStatus('Starting task','busy');
+  try{
+    const result=await bridge.start_task($('#task-goal').value.trim(),steps);
+    if(result.ok==='true'){
+      setComposer(false);renderTask(result.task);await refreshTasks();setStatus('Task started');
+      $('#task-goal').value='';$('#plan-preview').replaceChildren();taskDraft=null;
+    }else setStatus(result.message||'Task could not start','error');
+  }catch(e){setStatus('Task could not start','error')}
+  finally{$('#start-task').disabled=false}
+}
+function taskTone(status){
+  return status==='completed'?'complete':status==='failed'?'failed':status==='cancelled'?'cancelled':status==='waiting_approval'?'approval':'active';
+}
+function renderTask(task){
+  const content=$('#task-content');
+  if(!task){
+    content.innerHTML='<div class="task-empty"><i>◎</i><strong>No active task</strong><p>Type <b>create task:</b> followed by semicolon-separated steps.</p></div>';
+    return;
+  }
+  const percent=Math.round((task.progress||0)*100);
+  content.innerHTML=`<article class="task-card ${taskTone(task.status)}">
+    <div class="task-state"><span></span>${escapeHtml(task.status.replaceAll('_',' '))}</div>
+    <h4>${escapeHtml(task.goal)}</h4>
+    <div class="task-progress"><i style="width:${percent}%"></i></div>
+    <small>${task.completed_steps} OF ${task.total_steps} STEPS · ${percent}%</small>
+    <ol class="task-steps"></ol>
+    <div class="task-actions"></div>
+  </article>`;
+  const steps=content.querySelector('.task-steps');
+  task.steps.forEach(step=>{
+    const item=document.createElement('li');item.className=`step-${step.status}`;
+    const marker=document.createElement('span');marker.className='step-marker';
+    marker.textContent=step.status==='completed'?'✓':step.status==='failed'?'!':step.status==='cancelled'?'×':step.status==='running'?'●':step.status==='waiting_approval'?'◇':'○';
+    const copy=document.createElement('div');const title=document.createElement('strong');title.textContent=step.title;
+    const status=document.createElement('small');status.textContent=step.error||step.status.replaceAll('_',' ');
+    copy.append(title,status);item.append(marker,copy);
+    if(step.status==='waiting_approval'){
+      const approve=document.createElement('button');approve.textContent='APPROVE';approve.addEventListener('click',()=>taskOperation('approve_task_step',step.id,task.id));item.append(approve);
+    }else if(step.status==='failed'){
+      const retry=document.createElement('button');retry.textContent='RETRY';retry.addEventListener('click',()=>taskOperation('retry_task_step',step.id,task.id));item.append(retry);
+    }
+    steps.append(item);
+  });
+  if(!['completed','cancelled'].includes(task.status)){
+    const cancel=document.createElement('button');cancel.className='task-cancel';cancel.textContent='CANCEL TASK';cancel.addEventListener('click',()=>taskOperation('cancel_task','',task.id));content.querySelector('.task-actions').append(cancel);
+  }
+}
+function renderTaskHistory(tasks){
+  const history=$('#task-history-list');history.replaceChildren();
+  tasks.slice(0,8).forEach(task=>{
+    const button=document.createElement('button');button.type='button';
+    button.innerHTML=`<span class="${taskTone(task.status)}"></span><div><strong>${escapeHtml(task.goal)}</strong><small>${escapeHtml(task.status.replaceAll('_',' '))} · ${task.completed_steps}/${task.total_steps}</small></div>`;
+    button.addEventListener('click',async()=>{
+      const bridge=await waitForApi('task_status');if(!bridge)return;
+      const result=await bridge.task_status(task.id);if(result.ok==='true')renderTask(result.task);
+    });
+    history.append(button);
+  });
+}
+async function refreshTasks(){
+  const bridge=await waitForApi('list_tasks');if(!bridge)return;
+  try{
+    const result=await bridge.list_tasks();if(result.ok!=='true')return;
+    renderTaskHistory(result.tasks);
+    const active=result.tasks.find(task=>!['completed','failed','cancelled'].includes(task.status))||result.tasks[0];
+    renderTask(active||null);
+  }catch(e){}
+}
+async function taskOperation(method,stepId,taskId){
+  const bridge=await waitForApi(method);if(!bridge)return;
+  setStatus('Updating task','busy');
+  try{
+    const result=method==='cancel_task'?await bridge[method](taskId):await bridge[method](stepId,taskId);
+    if(result.ok==='true'){renderTask(result.task);await refreshTasks();setStatus('Task updated')}
+    else setStatus(result.message||'Task update failed','error');
+  }catch(e){setStatus('Task update failed','error')}
 }
 function stamp(){return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
 async function copyText(text,button){
@@ -71,20 +230,56 @@ function addCopyButton(article,text){
   const button=document.createElement('button');button.className='copy-message';button.type='button';button.textContent='COPY';button.title='Copy Jarvis response';
   button.addEventListener('click',event=>{event.stopPropagation();copyText(text,button)});meta.append(button);
 }
-function addMessage(role,text,loading=false){
+function addActionControls(article,actionId){
+  const controls=document.createElement('div');controls.className='action-controls';
+  const confirm=document.createElement('button');confirm.type='button';confirm.className='action-confirm';confirm.textContent='CONFIRM';
+  const cancel=document.createElement('button');cancel.type='button';cancel.className='action-cancel';cancel.textContent='CANCEL';
+  confirm.addEventListener('click',async()=>{
+    controls.remove();const bridge=await waitForApi('confirm_action');
+    const result=bridge?await bridge.confirm_action(actionId):{ok:'false',message:'Action bridge unavailable'};
+    setStatus(result.ok==='true'?'Action completed':'Action failed',result.ok==='true'?'ready':'error');
+  });
+  cancel.addEventListener('click',async()=>{
+    controls.remove();const bridge=await waitForApi('cancel_action');
+    const result=bridge?await bridge.cancel_action(actionId):{ok:'false',message:'Action bridge unavailable'};
+    setStatus(result.ok==='true'?'Action cancelled':'Cancellation failed',result.ok==='true'?'ready':'error');
+  });
+  controls.append(confirm,cancel);article.append(controls);
+}
+function addMessage(role,text,loading=false,persist=true){
   const article=document.createElement('article'); article.className=`message ${role}`;
-  article.innerHTML=`<div class="message-meta"><span class="message-mark"></span>${role==='user'?'KARAN':'JARVIS'} <time>${stamp()}</time></div><p>${loading?'<span class="loading-dots"><i></i><i></i><i></i></span>':escapeHtml(text)}</p>`;
+  if(loading){
+    article.classList.add('message-loading');
+    article.setAttribute('role','status');
+    article.setAttribute('aria-label','Jarvis is preparing a response');
+  }
+  const loadingMarkup='<span class="message-skeleton" aria-hidden="true"><i></i><i></i><i></i><i></i></span>';
+  article.innerHTML=`<div class="message-meta"><span class="message-mark"></span>${role==='user'?'KARAN':'JARVIS'} <time>${stamp()}</time></div><p>${loading?loadingMarkup:escapeHtml(text)}</p>`;
   if(role==='jarvis'&&!loading)addCopyButton(article,text);
-  $('#transcript').append(article); $('#transcript').scrollTop=$('#transcript').scrollHeight; return article;
+  $('#transcript').append(article); $('#transcript').scrollTop=$('#transcript').scrollHeight;
+  if(persist&&!loading)cacheTranscript();
+  return article;
 }
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function setCardLoading(card,loading,label){
+  if(!card)return;
+  card.classList.toggle('is-loading',loading);
+  card.disabled=loading;
+  card.setAttribute('aria-busy',String(loading));
+  const title=card.querySelector('h3');
+  if(title){
+    if(loading){title.dataset.label=title.textContent;title.textContent=label;}
+    else if(title.dataset.label){title.textContent=title.dataset.label;delete title.dataset.label;}
+  }
+}
 async function submit(command){
   command=(command||$('#prompt').value).trim(); if(!command||state.busy)return;
   state.busy=true; $('#prompt').value=''; showView('conversation'); addMessage('user',command); const wait=addMessage('jarvis','',true); setStatus('Jarvis is thinking','busy');
   let result;
   try{const bridge=await waitForApi('respond');result=bridge?await bridge.respond(command):bridgeFailure();}
   catch(e){result={ok:'false',answer:'Jarvis could not reach the local assistant core. Please restart the desktop app.'}}
-  wait.remove(); addMessage('jarvis',result.answer); setStatus(result.ok==='true'?'Online and ready':'Request failed',result.ok==='true'?'ready':'error'); state.busy=false;
+  wait.remove(); const reply=addMessage('jarvis',result.answer); if(result.requires_confirmation==='true')addActionControls(reply,result.action_id); setStatus(result.ok==='true'?'Online and ready':'Request failed',result.ok==='true'?'ready':'error'); state.busy=false;
+  if(/^(create task:|task status|show tasks|list tasks|resume task|approve step|retry step|cancel task)/i.test(command)){setTaskPanel(true);await refreshTasks()}
   if($('#speak-answers').checked){const bridge=await waitForApi('speak',800);if(bridge)bridge.speak(result.answer);}
 }
 async function listen(){
@@ -94,19 +289,26 @@ async function listen(){
   if(result.ok==='true'&&result.text) submit(result.text); else setStatus(result.text||'I did not catch that','error');
 }
 async function chooseDataset(){
-  const bridge=await waitForApi('choose_dataset');
-  if(!bridge){showView('conversation');addMessage('jarvis','The desktop file picker is still connecting. Please try again.');return;}
-  const result=await bridge.choose_dataset(); if(result.ok==='true'&&result.path) submit(`analyze "${result.path}"`);
+  const card=$('#dataset-card');setCardLoading(card,true,'Opening your files…');
+  try{
+    const bridge=await waitForApi('choose_dataset');
+    if(!bridge){showView('conversation');addMessage('jarvis','The desktop file picker is still connecting. Please try again.');return;}
+    const result=await bridge.choose_dataset(); if(result.ok==='true'&&result.path) submit(`analyze "${result.path}"`);
+  }finally{setCardLoading(card,false)}
 }
 async function chooseResume(){
+  const card=$('#resume-card');setCardLoading(card,true,'Opening your files…');
   showView('conversation');
   addMessage('jarvis','Choose your current resume. I will use it as the factual boundary, then ask you for the complete job description.');
-  const bridge=await waitForApi('choose_resume');
-  if(!bridge){addMessage('jarvis','The desktop file picker is still connecting. Please try again.');return;}
-  const result=await bridge.choose_resume(); if(result.ok==='true'&&result.path) submit(`load resume "${result.path}"`);
+  try{
+    const bridge=await waitForApi('choose_resume');
+    if(!bridge){addMessage('jarvis','The desktop file picker is still connecting. Please try again.');return;}
+    const result=await bridge.choose_resume(); if(result.ok==='true'&&result.path) submit(`load resume "${result.path}"`);
+  }finally{setCardLoading(card,false)}
 }
 async function setMode(mode){
   $$('.mode-switch button').forEach(b=>b.classList.toggle('selected',b.dataset.mode===mode));
+  writeUiCache({mode});
   const bridge=await waitForApi('set_mode',1200);
   if(bridge)await bridge.set_mode(mode);
   setStatus(`${mode} intelligence enabled`);
@@ -120,8 +322,16 @@ $('#send').addEventListener('click',()=>submit()); $('#prompt').addEventListener
 $('#mic').addEventListener('click',listen); $('#hero-orb').addEventListener('click',listen); $('#rail-listen').addEventListener('click',listen);
 $('#attach').addEventListener('click',chooseDataset); $('#dataset-card').addEventListener('click',chooseDataset);
 $('#resume-nav').addEventListener('click',chooseResume); $('#resume-card').addEventListener('click',chooseResume);
-window.addEventListener('pywebviewready',()=>{captureBridge();setStatus('Python core connected')});
+$('#tasks-nav').addEventListener('click',()=>setTaskPanel(!state.taskPanelOpen));
+$('#close-tasks').addEventListener('click',()=>setTaskPanel(false));
+$('#new-task').addEventListener('click',()=>setComposer(true));
+$('#discard-plan').addEventListener('click',()=>{setComposer(false);taskDraft=null;$('#plan-preview').replaceChildren()});
+$('#plan-task').addEventListener('click',planTask);
+$('#start-task').addEventListener('click',startPlannedTask);
+$('#speak-answers').addEventListener('change',event=>writeUiCache({speakAnswers:event.target.checked}));
+window.addEventListener('pywebviewready',()=>{captureBridge();setStatus('Python core connected');refreshTasks()});
 captureBridge();
+restoreUiCache();
 $$('.message time').forEach(t=>t.textContent=stamp()); updateClock(); setInterval(updateClock,1000);
 $$('.message.jarvis').forEach(message=>addCopyButton(message,message.querySelector('p')?.innerText||''));
 
