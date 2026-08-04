@@ -1,10 +1,10 @@
 # J.A.R.V.I.S.
 
-> A local-first personal AI assistant with voice, memory, data analysis, code generation, and a cinematic desktop command center.
+> A local-first AI command center for conversation, coding, app control, memory, and task agents.
 
-Jarvis is a Windows-focused Python assistant powered by local Ollama models. It combines natural conversation with persistent memory, microphone input, human-friendly speech, spreadsheet analysis, safe code generation, and an animated science-fiction interface.
+Jarvis is a Windows-focused Python assistant designed to stay on your local device whenever possible. It combines natural conversation, persistent memory, microphone input, human-friendly speech, spreadsheet analysis, safe code generation, and an animated science-fiction interface.
 
-The project is designed around a simple principle: personal assistance should remain on your machine whenever possible.
+The project is built around a simple principle: your assistant should answer questions, help you code, and automate work locally instead of sending everything to the cloud.
 
 ## Highlights
 
@@ -15,8 +15,10 @@ The project is designed around a simple principle: personal assistance should re
 - **CSV and Excel analysis** — summaries, grouped calculations, correlations, charts, and worksheet selection.
 - **Read-only SQL** — query the active dataset locally without permitting database writes.
 - **Code generation** — generate Python and SQL without automatically executing untrusted code.
-- **Intent interpretation** — understands informal, incomplete, and misspelled analysis requests.
+- **Intent interpretation** — understands informal, incomplete, and misspelled requests.
 - **Local learning** — teach Jarvis phrases and mark answers as helpful or incorrect.
+- **Task agents** — organize work into goal-driven agent flows for repeatable tasks.
+- **App control foundation** — ready for local desktop automation and app interaction skills.
 
 ## Interface
 
@@ -230,9 +232,19 @@ Run the complete test suite:
 
 Version 1 currently includes tests for memory, intent interpretation, LLM options, safe code generation, dataset analysis, read-only SQL, assistant routing, and natural speech formatting.
 
-## Version 1 Roadmap
+## Capabilities and roadmap
 
-Potential next steps include:
+Jarvis is intended to grow into a fully local, Codex-like assistant that can:
+
+- answer questions and carry on natural conversation;
+- write, explain, and refine code locally;
+- understand your intent and turn it into safe actions;
+- control supported desktop apps and workflows through tools;
+- organize multi-step tasks into agent-style work plans; and
+- keep conversation, memory, and task context on your device whenever possible.
+
+The current Version 1 roadmap focuses on the pieces needed to make that experience practical:
+
 
 - wake-word detection;
 - email and calendar briefings;
@@ -240,7 +252,9 @@ Potential next steps include:
 - deeper local-document research with citations;
 - installable skill modules;
 - configurable UI themes;
-- streaming responses and speech; and
+- streaming responses and speech;
+- desktop app automation for common workflows;
+- multi-step task agents that can plan, act, and report progress; and
 - packaged Windows releases.
 
 ## Acknowledgements
