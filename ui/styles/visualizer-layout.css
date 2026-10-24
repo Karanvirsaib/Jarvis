@@ -1,0 +1,4 @@
+.core{top:38%;width:min(38vw,440px);height:min(38vw,440px)}
+.status-block{top:76%}
+@media(max-width:760px){.core{top:36%;width:min(70vw,390px);height:min(70vw,390px)}.status-block{top:70%}}
+@media(max-height:650px){.core{top:37%;width:min(58vh,360px);height:min(58vh,360px)}.status-block{top:76%}}

@@ -1,0 +1,20 @@
+# MODEL CONFIGURATION
+
+routing:
+  executive_agent: "openrouter"
+  executive_model: "openrouter/free"
+  fallback_agent: "ollama"
+  fallback_model: "qwen3.5:4b"
+
+  deep_coding_agent: "claude-code"  # Deferring deep coding tasks to the Claude Code CLI
+
+  memory_provider: "honcho-local"   # Primary memory interface
+
+openrouter:
+  chat_completions_url: "https://openrouter.ai/api/v1/chat/completions"
+  timeout_seconds: 120
+
+ollama:
+  generate_url: "http://localhost:11434/api/generate"
+  timeout_seconds: 180
+  context_length: 8192

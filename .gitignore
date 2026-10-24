@@ -1,0 +1,74 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Config & Secrets
+.env
+!.env.example
+secrets/
+*.token
+*.json.bak
+credentials.json
+token.json
+oauth_tokens/
+
+# Runtime data
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs and databases
+logs/
+*.log
+data/
+*.db
+*.sqlite3
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Memory
+memory/sessions/*
+!memory/sessions/.gitkeep
+memory/working/*
+!memory/working/.gitkeep
+
+# Claude
+.claude/
+
+# Hermes runtime installation and local credentials
+/hermes-home/
+/vendor/hermes-agent/
+
+# Local UI verification screenshots may contain conversation history
+/docs/screenshots/

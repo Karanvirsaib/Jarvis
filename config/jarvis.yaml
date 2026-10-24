@@ -1,0 +1,14 @@
+# JARVIS MAIN CONFIGURATION
+
+identity:
+  name: "JARVIS"
+  version: "1.0.0"
+  user: "Karanvir Singh Saib"
+
+automation:
+  enabled: true
+  safe_mode: true
+
+logging:
+  level: "INFO"
+  file: "logs/jarvis.log"

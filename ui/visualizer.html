@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#05090e">
+  <title>JARVIS — Visualizer</title>
+  <link rel="stylesheet" href="/styles/visualizer.css">
+  <link rel="stylesheet" href="/styles/visualizer-layout.css">
+</head>
+<body>
+  <main class="stage" id="stage" data-state="idle">
+    <canvas id="field" aria-hidden="true"></canvas>
+    <header class="topline">
+      <a class="wordmark" href="/" aria-label="Return to Jarvis workspace"><span class="brand-glyph"><i></i><i></i><i></i><i></i></span><span>JARVIS <small>PERSONAL INTELLIGENCE</small></span></a>
+      <div class="live-indicator"><i></i><span>JARVIS SESSION</span><b>·</b><span>RUNNING ON THIS PC</span></div>
+      <div class="top-actions"><button id="voice-toggle" class="quiet-button" type="button" aria-pressed="false" title="Enable spoken replies">VOICE REPLIES <span>OFF</span></button><button id="fullscreen" class="icon-button" type="button" aria-label="Enter fullscreen" title="Enter fullscreen">⛶</button></div>
+    </header>
+
+    <section class="core" aria-live="polite">
+      <div class="orbit orbit-outer"></div>
+      <div class="orbit orbit-mid"></div>
+      <div class="orbit orbit-inner"></div>
+      <div class="core-glow"></div>
+      <div class="core-mark"><span class="core-letter">J</span><span class="core-crosshair"></span></div>
+      <div class="core-readout top-readout"><span>NEURAL ARRAY</span><i>ACTIVE</i></div>
+      <div class="core-readout bottom-readout"><span id="state-code">SYS // STANDBY</span><span id="clock">--:--:--</span></div>
+      <div class="axis axis-x"></div><div class="axis axis-y"></div>
+    </section>
+
+    <section class="status-block">
+      <div class="eyebrow"><span></span> JARVIS SYSTEM INTERFACE <span></span></div>
+      <h1 id="state-title">Standing by<span class="period">.</span></h1>
+      <p id="state-subtitle">All systems ready. Give me something to work on.</p>
+      <div class="activity-track" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="response-preview" id="response-preview" hidden></div>
+    </section>
+
+    <footer class="bottomline">
+      <div class="system-readout"><span class="readout-label">MODE</span><strong id="mode-value">IDLE</strong><span class="readout-divider"></span><span class="readout-label">ENGINE</span><strong>HERMES · LOCAL</strong></div>
+      <button id="talk" class="talk-button" type="button"><span class="mic-icon">⌁</span><span class="talk-copy"><strong>Talk to Jarvis</strong><small>CLICK TO SPEAK</small></span><span class="talk-hotkey">MIC</span></button>
+      <div class="privacy-readout"><i></i> MIC ON REQUEST · BROWSER SPEECH ENGINE</div>
+    </footer>
+    <div id="notice" class="notice" role="status" aria-live="polite"></div>
+  </main>
+  <script src="/components/visualizer.js" defer></script>
+</body>
+</html>

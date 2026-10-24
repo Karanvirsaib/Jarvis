@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090d12">
+  <title>JARVIS — Personal Intelligence</title>
+  <link rel="stylesheet" href="/styles/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="Jarvis home">
+        <span class="brand-mark"><span></span><span></span><span></span><span></span></span>
+        <span class="brand-copy"><strong>JARVIS</strong><small>PERSONAL INTELLIGENCE</small></span>
+      </a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="nav-list" aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview"><span class="nav-icon">◈</span> Overview</button>
+        <button class="nav-item" data-view="agents"><span class="nav-icon">⌘</span> Agent team <span class="nav-badge">HERMES</span></button>
+        <button class="nav-item" data-view="memory"><span class="nav-icon">▤</span> Memory</button>
+        <button class="nav-item" data-view="connections"><span class="nav-icon">⌁</span> Connections</button>
+        <button class="nav-item" data-view="screen"><span class="nav-icon">▣</span> Screen context</button>
+        <button class="nav-item" data-view="workflows"><span class="nav-icon">▷</span> Workflows</button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="system-card">
+        <div class="system-card-head"><span class="pulse-dot"></span><span>LOCAL SYSTEM</span><span class="system-state" id="service-state">CONNECTING</span></div>
+        <div class="system-row"><span>Model route</span><span id="model-route">—</span></div>
+        <div class="system-row"><span>Memory</span><span>SQLite · local</span></div>
+        <div class="system-row"><span>Agents</span><span id="agent-state" class="muted">Connecting</span></div>
+      </div>
+      <div class="profile"><div class="avatar">KS</div><div><strong>Karanvir</strong><small>Administrator</small></div><button class="more-button" aria-label="Profile options">•••</button></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>Workspace</span><span class="crumb-sep">/</span><strong id="crumb-current">Overview</strong></div>
+        <div class="topbar-right"><a class="visualizer-launch" href="/visualizer.html" target="_blank" rel="noopener"><span>◉</span> FACE</a><span class="local-badge"><span></span> RUNNING LOCALLY</span><span class="topbar-divider"></span><span class="clock" id="clock">--:--</span></div>
+      </header>
+
+      <section class="view active-view" id="view-overview">
+        <div class="welcome-row"><div><div class="eyebrow"><span class="eyebrow-line"></span> YOUR PERSONAL AI WORKSPACE</div><h1>Good to see you,<br><span>Karanvir.</span></h1><p class="welcome-subtitle">A local assistant with a live agent team, specialist workflows, and clear setup status.</p></div><div class="orb-wrap" aria-hidden="true"><div class="orb-ring ring-one"></div><div class="orb-ring ring-two"></div><div class="orb-core"><span>J</span></div><div class="orb-caption">JARVIS <i>•</i> ONLINE</div></div></div>
+
+        <div class="stat-grid">
+          <article class="stat-card"><div class="stat-top"><span>EXECUTIVE BRAIN</span><span class="status-pill" id="brain-pill"><i></i> CHECKING</span></div><strong id="brain-value">OpenRouter</strong><small id="brain-note">Checking key and local fallback</small></article>
+          <article class="stat-card"><div class="stat-top"><span>CONVERSATION MEMORY</span><span class="status-pill neutral"><i></i> LOCAL</span></div><strong>SQLite memory</strong><small>Local history · Honcho plugin installed, awaiting key</small></article>
+          <article class="stat-card"><div class="stat-top"><span>AGENT HARNESS</span><span class="status-pill neutral" id="harness-pill"><i></i> CONNECTING</span></div><strong>Hermes agent team</strong><small id="harness-note">Council review · bounded delegation · progress tracking</small></article>
+          <article class="stat-card"><div class="stat-top"><span>ACTION ACCESS</span><span class="status-pill good"><i></i> RESTRICTED</span></div><strong>No accounts connected</strong><small>External actions are not available yet</small></article>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel chat-panel" id="chat-panel">
+            <div class="panel-heading"><div><div class="section-kicker">COMMAND INTERFACE</div><h2>Talk to Jarvis</h2></div><span class="panel-caption"><span class="pulse-dot"></span> READY FOR INPUT</span></div>
+            <div class="chat-feed" id="chat-feed" aria-live="polite">
+              <div class="message assistant-message"><div class="message-avatar">J</div><div class="message-body"><div class="message-meta">JARVIS <span>•</span> JUST NOW</div><div class="message-bubble">I’m online. I can answer questions and use the current text model. My agent council and connected-app actions are still being built, so I’ll tell you clearly when a task needs capabilities I don’t have yet.</div></div></div>
+            </div>
+            <button type="button" class="run-stop" id="new-conversation">New conversation</button><label class="memory-consent"><input type="checkbox" id="include-memory"> Include relevant saved facts with this request (shared with the configured AI model)</label><form class="composer" id="chat-form"><label for="message-input" class="sr-only">Message Jarvis</label><textarea id="message-input" rows="1" maxlength="8000" placeholder="Ask Jarvis anything…" required></textarea><div class="composer-bottom"><span class="composer-hint"><kbd>Enter</kbd> to send <span>·</span> <kbd>Shift + Enter</kbd> for a new line</span><div class="composer-actions"><button class="voice-input" id="voice-input" type="button" aria-label="Speak to Jarvis" title="Speak to Jarvis">⌁</button><button class="send-button" type="submit"><span>Send message</span><b>↑</b></button></div></div></form>
+          </section>
+
+          <aside class="right-column">
+            <section class="panel task-panel"><div class="panel-heading compact"><div><div class="section-kicker">ORCHESTRATION</div><h2>Agent council</h2></div><span class="coming-tag">HERMES</span></div><p class="panel-copy">For substantial tasks, Hermes can assess feasibility and risks, delegate independent work to specialist agents, track the run, and verify the result.</p><div class="council-flow"><div class="flow-node"><span class="flow-icon">◎</span><div><strong>Plan & challenge</strong><small>Feasibility · risks · scope</small></div><span class="flow-state">COUNCIL</span></div><div class="flow-connector"></div><div class="flow-node"><span class="flow-icon">⌘</span><div><strong>Delegate specialists</strong><small>Up to 3 parallel agents</small></div><span class="flow-state">LIVE</span></div><div class="flow-connector"></div><div class="flow-node"><span class="flow-icon">✓</span><div><strong>Verify & report</strong><small>Evidence · blockers · next steps</small></div><span class="flow-state">REVIEW</span></div></div></section>
+            <section class="panel capabilities-panel"><div class="panel-heading compact"><div><div class="section-kicker">CAPABILITIES</div><h2>Build roadmap</h2></div><span class="roadmap-count">03 / 04</span></div><div class="roadmap-list"><div class="roadmap-item"><span class="roadmap-marker"></span><div><strong>Conversation foundation</strong><small>Local UI · Qwen · SQLite</small></div><span class="roadmap-status">READY</span></div><div class="roadmap-item"><span class="roadmap-marker"></span><div><strong>Agent harness & council</strong><small>Hermes · delegates · run control</small></div><span class="roadmap-status">READY</span></div><div class="roadmap-item current"><span class="roadmap-marker"></span><div><strong>Specialist workflows</strong><small>Code · research · data · resume · automation</small></div><span class="roadmap-status">LIVE</span></div><div class="roadmap-item"><span class="roadmap-marker"></span><div><strong>Account connections</strong><small>OAuth · Honcho memory · device access</small></div><span class="roadmap-status">SETUP NEEDED</span></div></div></section>
+          </aside>
+        </div>
+        <footer class="footer-note"><span>JARVIS LOCAL <i>•</i> BUILD 0.2</span><span>Private by default <i>•</i> You stay in control</span></footer>
+      </section>
+
+      <section class="view placeholder-view" id="view-agents"><div class="eyebrow"><span class="eyebrow-line"></span> MULTI-AGENT ORCHESTRATION</div><h1>A team that <span>works in parallel.</span></h1><p class="welcome-subtitle">Hermes supplies independent subagents; Jarvis sets their scope, concurrency, and bounded-work rules. Role selection depends on the task.</p><div class="agent-grid"><article class="agent-card"><span>◎</span><div><h3>Planner</h3><p>Breaks your goal into steps, dependencies, a time limit and a definition of done.</p><small>SPECIALIST</small></div></article><article class="agent-card"><span>⌕</span><div><h3>Researcher</h3><p>Finds evidence and reports sources, unknowns and confidence.</p><small>SPECIALIST</small></div></article><article class="agent-card"><span>⌘</span><div><h3>Builder</h3><p>Handles focused coding, data, document and automation work.</p><small>SPECIALIST</small></div></article><article class="agent-card"><span>⛨</span><div><h3>Independent reviewer</h3><p>Checks results against evidence and completion criteria.</p><small>SPECIALIST</small></div></article><article class="agent-card"><span>↻</span><div><h3>Recovery specialist</h3><p>Escalates blockers, proposes alternatives and respects retry limits.</p><small>SPECIALIST</small></div></article><article class="agent-card"><span>◉</span><div><h3>Coordinator</h3><p>Tracks delegated work and returns a clear progress report.</p><small>SPECIALIST</small></div></article></div></section>
+
+      <section class="view placeholder-view" id="view-memory"><div class="eyebrow"><span class="eyebrow-line"></span> PERSONAL CONTEXT</div><h1>Memory with <span>your control.</span></h1><p class="welcome-subtitle">The prototype stores conversation history and saved facts in a local SQLite database on this PC.</p><div class="memory-layout"><div class="panel memory-main"><div class="panel-heading"><div><div class="section-kicker">RECENT CONTEXT</div><h2>Conversation memory</h2></div><span class="coming-tag">LOCAL ONLY</span></div><div id="memory-messages" class="memory-list"><div class="empty-state">Loading local memory…</div></div></div><div class="panel memory-main"><div class="panel-heading"><div><div class="section-kicker">SAVED FACTS</div><h2>Reference memory</h2></div></div><form id="memory-form" class="memory-editor">
+<input type="hidden" id="memory-id">
+<label>Category<input id="memory-category" maxlength="80" value="Preferences" required></label>
+<label>Fact<textarea id="memory-content" maxlength="2000" rows="3" placeholder="A preference or project fact. Keep passwords and keys out of memory." required></textarea></label>
+<p>Saved locally. Facts are shared with the AI only when you enable saved facts for a chat request. Deleting here does not erase prior chats or copies already sent to a model.</p>
+<div><button type="submit" class="run-stop">Save fact</button> <button type="button" id="memory-cancel" class="run-stop" hidden>Cancel edit</button></div>
+</form><label class="memory-search">Search saved facts<input type="search" id="memory-search" placeholder="Filter by category or content"></label>
+<p id="memory-feedback" role="status" aria-live="polite"></p><div id="memory-facts" class="memory-list"><div class="empty-state">Loading saved facts…</div></div></div></div></section>
+
+      <section class="view placeholder-view" id="view-connections"><div class="eyebrow"><span class="eyebrow-line"></span> CONNECTED SERVICES</div><h1>Connections, <span>one at a time.</span></h1><p class="welcome-subtitle">Connect each account with its official sign-in flow. Jarvis asks before sending messages or making changes.</p><div class="integration-grid"><article class="integration-card"><span class="integration-icon">✉</span><div><h3>Gmail</h3><p>Search and draft; approval required before sending.</p><small id="gmail-state">CHECKING</small></div></article><article class="integration-card"><span class="integration-icon">▦</span><div><h3>Calendar</h3><p>Review availability and prepare event changes.</p><small id="calendar-state">CHECKING</small></div></article><article class="integration-card"><span class="integration-icon">▤</span><div><h3>Docs & Drive</h3><p>Find and work with selected files.</p><small id="drive-state">CHECKING</small></div></article><article class="integration-card"><span class="integration-icon">◉</span><div><h3>Browser</h3><p>Local browser automation; personal login sessions are separate.</p><small id="browser-state">CHECKING</small></div></article><article class="integration-card"><span class="integration-icon">⌘</span><div><h3>PC access</h3><p>Workspace files, terminal, and desktop control are available to Jarvis.</p><small id="pc-state">CHECKING</small></div></article><article class="integration-card"><span class="integration-icon">◌</span><div><h3>Honcho</h3><p>Cross-session memory; provider syncs conversation turns.</p><small id="honcho-state">CHECKING</small></div></article><article class="integration-card"><span class="integration-icon">▶</span><div><h3>YouTube</h3><p>Video research is ready; channel account access is separate.</p><small id="youtube-state">CHECKING</small></div></article><article class="integration-card"><span class="integration-icon">▣</span><div><h3>Phone & iMessage</h3><p>The Hermes iMessage skill requires macOS Messages and is unavailable on this Windows host.</p><small>UNAVAILABLE ON WINDOWS</small></div></article><article class="integration-card"><span class="integration-icon">⌘</span><div><h3>Claude Code</h3><p>Coding specialist CLI is installed; sign-in state is not verified.</p><small id="claude-code-state">CHECKING</small></div></article></div><article class="panel google-setup"><div class="section-kicker">GOOGLE ACCOUNT SETUP</div><h2>One OAuth file unlocks Gmail, Calendar, Drive and Docs</h2><p>Create a Desktop app OAuth client in Google Cloud, enable the APIs you want, and add your Google account as a test user if the app is in testing. Save the downloaded file as <code>D:\Jarvis\hermes-home\google_client_secret.json</code>, then return to Jarvis and ask it to connect Google Workspace.</p><a class="button-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Open Google Cloud credentials ↗</a></article></section>
+      <section class="view placeholder-view" id="view-screen">
+        <div class="eyebrow">LOCAL VISION</div><h1>Understand <span>your screen.</span></h1>
+        <p class="welcome-subtitle">Choose a window or screenshot, review the preview, then ask a question. Analysis uses the local Qwen model. Images are not saved by Jarvis or sent to cloud providers.</p>
+        <div class="panel feature-panel"><div class="feature-actions"><button type="button" class="run-stop" id="capture-screen">Capture screen or window</button><label class="run-stop">Choose screenshot<input type="file" id="screen-file" accept="image/png,image/jpeg,image/webp"></label><button type="button" class="run-stop" id="clear-screen">Clear image</button></div>
+        <img id="screen-preview" alt="Selected screenshot preview" hidden>
+        <form id="screen-form" class="memory-editor"><label>Question about this image<textarea id="screen-question" maxlength="2000" required rows="2">Explain what is visible and highlight anything I should check.</textarea></label><button type="submit" class="run-stop" id="analyze-screen" disabled>Analyze locally</button></form>
+        <p id="screen-status" role="status" aria-live="polite">Choose an image to begin.</p><div id="screen-answer" class="memory-entry" hidden></div></div>
+      </section>
+      <section class="view placeholder-view" id="view-workflows">
+        <div class="eyebrow">HERMES EXECUTION</div><h1>Workflows <span>and results.</span></h1>
+        <p class="welcome-subtitle">Save a repeatable sequence, then start it when ready. Hermes executes the requested steps in one run; progress below tracks the run, not independently verified step completion. Consequential actions still require approval.</p>
+        <div class="memory-layout"><div class="panel feature-panel"><h2>Save a workflow</h2><form id="workflow-form" class="memory-editor"><label>Title<input id="workflow-title" maxlength="100" required></label><label>Objective<textarea id="workflow-objective" maxlength="2000" required rows="3"></textarea></label><label>Steps, one per line<textarea id="workflow-steps" required rows="5" placeholder="1 to 12 steps; each up to 400 characters"></textarea></label><button type="submit" class="run-stop">Save workflow</button></form><p id="workflow-status" role="status" aria-live="polite"></p></div><div class="panel feature-panel"><h2>Saved workflows</h2><div id="workflow-list" class="memory-list"></div></div></div>
+        <div class="panel feature-panel"><h2>Run history</h2><p>Refresh after reopening to reconnect to running work. Starting again creates a new run and may repeat actions.</p><button type="button" class="run-stop" id="refresh-workflows">Refresh status</button><div id="workflow-runs" class="memory-list"></div></div>
+      </section>
+    </main>
+  </div>
+  <script src="/components/app.js" defer></script>
+  <script src="/components/features.js" defer></script>
+</body>
+</html>

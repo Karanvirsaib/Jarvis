@@ -1,0 +1,355 @@
+const feed = document.querySelector('#chat-feed');
+const form = document.querySelector('#chat-form');
+const input = document.querySelector('#message-input');
+const sendButton = form.querySelector('.send-button');
+const voiceButton = document.querySelector('#voice-input');
+const visualChannel = 'BroadcastChannel' in window ? new BroadcastChannel('jarvis-visualizer') : null;
+
+function setFaceState(state, detail = '') {
+  const event = { type: 'state', state, detail, at: Date.now() };
+  visualChannel?.postMessage(event);
+  try { localStorage.setItem('jarvis.face.state', JSON.stringify(event)); } catch (_) {}
+}
+
+visualChannel?.addEventListener('message', (event) => {
+  if (event.data?.type !== 'voice-input' || typeof event.data.text !== 'string') return;
+  input.value = event.data.text.trim();
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  form.requestSubmit();
+});
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
+}
+
+function addMessage(role, content, { temporary = false } = {}) {
+  const user = role === 'user';
+  const node = document.createElement('div');
+  node.className = `message ${user ? 'user-message' : 'assistant-message'}${temporary ? ' thinking' : ''}`;
+  node.innerHTML = `<div class="message-avatar">${user ? 'KS' : 'J'}</div><div class="message-body"><div class="message-meta">${user ? 'YOU' : 'JARVIS'} <span>•</span> ${temporary ? 'WORKING' : 'NOW'}</div><div class="message-bubble">${escapeHtml(content)}</div></div>`;
+  feed.append(node);
+  feed.scrollTop = feed.scrollHeight;
+  return node;
+}
+
+async function refreshStatus() {
+  try {
+    const response = await fetch('/api/status', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Server unavailable');
+    const status = await response.json();
+    document.querySelector('#agent-state').textContent = status.hermes_online ? 'Hermes online' : 'Offline';
+    const harnessPill = document.querySelector('#harness-pill');
+    harnessPill.innerHTML = `<i></i> ${status.hermes_online ? 'CONNECTED' : 'OFFLINE'}`;
+    harnessPill.className = `status-pill ${status.hermes_online ? 'good' : 'neutral'}`;
+    document.querySelector('#harness-note').textContent = status.hermes_online
+      ? 'Council review · up to 3 concurrent delegates · bounded runs'
+      : 'Start Hermes through scripts/start_jarvis.ps1';
+    const honchoState = document.querySelector('#honcho-state');
+    if (honchoState) honchoState.textContent = status.honcho_connected
+      ? 'CONNECTED'
+      : status.honcho_plugin_installed
+        ? (status.honcho_api_key_configured ? 'READY · NOT ENABLED' : 'PLUGIN INSTALLED · KEY NEEDED')
+        : 'NOT INSTALLED';
+    const browserState = document.querySelector('#browser-state');
+    if (browserState) browserState.textContent = status.browser_tools_available
+      ? 'TOOLS AVAILABLE · LOGIN SEPARATE' : 'NOT AVAILABLE';
+    const pcState = document.querySelector('#pc-state');
+    if (pcState) pcState.textContent = status.desktop_control_available
+      ? 'FILES · TERMINAL · DESKTOP CONTROL READY'
+      : status.workspace_file_tools_available ? 'WORKSPACE FILES & TERMINAL READY' : 'NOT AVAILABLE';
+    for (const id of ['gmail-state', 'calendar-state', 'drive-state']) {
+      const element = document.querySelector(`#${id}`);
+      if (element && status.google_workspace_skill_available) element.textContent = status.google_oauth_connected
+        ? 'CONNECTED' : status.google_oauth_client_configured ? 'OAUTH SETUP READY · SIGN IN NEEDED' : 'GOOGLE OAUTH CLIENT NEEDED';
+    }
+    const youtubeState = document.querySelector('#youtube-state');
+    if (youtubeState) youtubeState.textContent = status.youtube_skill_available
+      ? 'VIDEO SKILL READY · CHANNEL LOGIN NEEDED' : 'NOT AVAILABLE';
+    const claudeCodeState = document.querySelector('#claude-code-state');
+    if (claudeCodeState) claudeCodeState.textContent = status.claude_code_available && status.claude_code_skill_available
+      ? 'CLI & SKILL AVAILABLE · LOGIN UNVERIFIED' : 'NOT AVAILABLE';
+    document.querySelector('#service-state').textContent = status.hermes_online ? 'ONLINE' : 'LIMITED';
+    document.querySelector('#service-state').style.color = status.hermes_online ? 'var(--green)' : 'var(--amber)';
+    document.querySelector('#model-route').textContent = status.model_route;
+    const configured = status.openrouter_key_configured;
+    const localReady = status.ollama_reachable && status.ollama_model_available;
+    const pill = document.querySelector('#brain-pill');
+    const value = document.querySelector('#brain-value');
+    const note = document.querySelector('#brain-note');
+    if (status.hermes_online && configured) {
+      pill.innerHTML = '<i></i> CONNECTED';
+      pill.className = 'status-pill good';
+      value.textContent = 'Hermes · OpenRouter';
+      note.textContent = localReady ? 'Ollama fallback model is ready' : 'OpenRouter active; local fallback needs setup';
+    } else if (status.hermes_online && localReady) {
+      pill.innerHTML = '<i></i> LOCAL READY';
+      pill.className = 'status-pill good';
+      value.textContent = 'Hermes · Ollama';
+      note.textContent = 'Using local inference route';
+    } else {
+      pill.innerHTML = `<i></i> ${status.hermes_online ? 'MODEL SETUP' : 'OFFLINE'}`;
+      pill.className = 'status-pill';
+      value.textContent = 'Hermes agent harness';
+      note.textContent = status.hermes_online ? 'Add a model key or install the configured local model' : 'Start Jarvis to connect the agent runtime';
+    }
+  } catch (_) {
+    document.querySelector('#service-state').textContent = 'OFFLINE';
+    document.querySelector('#service-state').style.color = 'var(--amber)';
+    document.querySelector('#brain-note').textContent = 'Start the Jarvis local server to connect';
+  }
+}
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const message = input.value.trim();
+  if (!message || sendButton.disabled) return;
+  const includeMemory = document.querySelector('#include-memory').checked;
+  document.querySelector('#include-memory').checked = false;
+  setFaceState('thinking');
+  addMessage('user', message);
+  input.value = '';
+  input.style.height = 'auto';
+  sendButton.disabled = true;
+  document.querySelector("#new-conversation").disabled = true;
+  const pending = addMessage('assistant', 'Starting Hermes run…', { temporary: true });
+  try {
+    const response = await fetch('/api/runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, include_memory: includeMemory })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Request failed');
+    if (result.memory_used?.length) {
+      addMessage('assistant', `Using ${result.memory_used.length} saved fact(s): ${[...new Set(result.memory_used.map(item => item.category))].join(', ')}.`);
+    }
+    const runId = result.run_id || result.id;
+    if (!runId) throw new Error('Hermes accepted the request but returned no run id.');
+    const bubble = pending.querySelector('.message-bubble');
+    bubble.innerHTML = `Run ${escapeHtml(runId.slice(0, 10))} · ${escapeHtml(result.status || 'queued')}<br><button class="run-stop" type="button">Stop run</button>`;
+    const stop = bubble.querySelector('.run-stop');
+    stop.addEventListener('click', async () => {
+      stop.disabled = true;
+      await fetch(`/api/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' });
+    });
+    const workPhrases = [
+      'Thinking it through…', 'Working on it…', 'Putting the pieces together…',
+      'Making progress…', 'On the case…', 'Checking the details…',
+      'Working through the task…', 'Taking a closer look…', 'Still at it…'
+    ];
+    let currentPhrase = '';
+    let polls = 0;
+    while (polls++ < 600) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const statusResponse = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: 'no-store' });
+      const status = await statusResponse.json();
+      if (!statusResponse.ok) throw new Error(status.error || 'Could not read run status.');
+      const state = status.status || 'running';
+      if (['completed', 'failed', 'cancelled', 'expired'].includes(state)) {
+        pending.remove();
+        const answer = status.output || status.final_response || status.error || `Run ${state}.`;
+        addMessage('assistant', answer);
+        visualChannel?.postMessage({ type: 'response', text: String(answer), runState: state, at: Date.now() });
+        try {
+          localStorage.setItem('jarvis.face.lastResponse', JSON.stringify({ text: String(answer), at: Date.now() }));
+          localStorage.setItem('jarvis.face.state', JSON.stringify({ state: 'idle', detail: 'Reply ready. Ask me what you need next.', at: Date.now() }));
+        } catch (_) {}
+        break;
+      }
+      if (polls % 2 === 0 || !currentPhrase) {
+        const choices = workPhrases.filter((phrase) => phrase !== currentPhrase);
+        currentPhrase = choices[Math.floor(Math.random() * choices.length)];
+      }
+      bubble.firstChild.textContent = `${currentPhrase} · ${state}${status.last_event ? ` · ${status.last_event}` : ''} `;
+      if (polls === 600) bubble.firstChild.textContent = 'Still running. Check Hermes logs for the current state.';
+    }
+    if (document.querySelector('#view-memory').classList.contains('active-view')) loadMemory();
+  } catch (error) {
+    pending.remove();
+    addMessage('assistant', error.message || 'Jarvis could not reach the local service.');
+    visualChannel?.postMessage({ type: 'response', text: error.message || 'Jarvis could not reach the local service.', runState: 'failed', at: Date.now() });
+    try { localStorage.setItem('jarvis.face.state', JSON.stringify({ state: 'idle', detail: 'The request stopped. You can try again.', at: Date.now() })); } catch (_) {}
+  } finally {
+    sendButton.disabled = false;
+    document.querySelector("#new-conversation").disabled = false;
+    input.focus();
+  }
+});
+
+if (voiceButton) {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) {
+    voiceButton.disabled = true;
+    voiceButton.title = 'Voice input is not supported by this browser';
+    voiceButton.setAttribute('aria-label', 'Voice input is not supported by this browser');
+  } else {
+    let recognition = null;
+    voiceButton.addEventListener('click', () => {
+      if (recognition) {
+        recognition.stop();
+        return;
+      }
+      recognition = new Recognition();
+      recognition.lang = 'en-IN';
+      recognition.interimResults = true;
+      recognition.continuous = false;
+      let finalText = '';
+      voiceButton.classList.add('listening');
+      voiceButton.setAttribute('aria-label', 'Stop listening to Jarvis');
+      setFaceState('listening', 'Listening to your voice');
+      recognition.onresult = (event) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const text = event.results[i][0].transcript;
+          if (event.results[i].isFinal) finalText += `${text} `;
+          else interim += text;
+        }
+        input.value = `${finalText}${interim}`.trim();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      recognition.onerror = (event) => {
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          visualChannel?.postMessage({ type: 'notice', text: `Voice input: ${event.error}` });
+        }
+      };
+      recognition.onend = () => {
+        recognition = null;
+        voiceButton.classList.remove('listening');
+        voiceButton.setAttribute('aria-label', 'Speak to Jarvis');
+        if (finalText.trim()) form.requestSubmit();
+        else setFaceState('idle', 'Standing by');
+      };
+      try { recognition.start(); }
+      catch (_) { recognition = null; voiceButton.classList.remove('listening'); setFaceState('idle', 'Standing by'); }
+    });
+  }
+}
+
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+});
+input.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    form.requestSubmit();
+  }
+});
+
+let savedFacts = [];
+function memoryFeedback(text) {
+  document.querySelector('#memory-feedback').textContent = text;
+}
+function resetMemoryForm() {
+  document.querySelector('#memory-form').reset();
+  document.querySelector('#memory-id').value = '';
+  document.querySelector('#memory-cancel').hidden = true;
+}
+function renderFacts() {
+  const query = document.querySelector('#memory-search').value.toLowerCase();
+  const matches = savedFacts.filter(item => `${item.category} ${item.content}`.toLowerCase().includes(query));
+  document.querySelector('#memory-facts').innerHTML = matches.length
+    ? matches.map(item => `<article class="memory-entry"><span>${escapeHtml(item.category)}</span><div>${escapeHtml(item.content)}</div><small>Source: ${escapeHtml(item.source)} · Updated ${escapeHtml(new Date(item.updated_at * 1000).toLocaleString())}</small><div><button type="button" class="run-stop" data-memory-edit="${item.id}">Edit</button> <button type="button" class="run-stop" data-memory-delete="${item.id}">Delete</button></div></article>`).join('')
+    : '<div class="empty-state">No matching saved facts. Add one above.</div>';
+}
+async function loadMemory() {
+  try {
+    const [history, facts] = await Promise.all([
+      fetch('/api/history', { cache: 'no-store' }), fetch('/api/memory', { cache: 'no-store' })
+    ]);
+    if (!history.ok || !facts.ok) throw new Error('Could not load local memory.');
+    const data = await history.json();
+    savedFacts = (await facts.json()).facts;
+    document.querySelector('#memory-messages').innerHTML = data.messages.length
+      ? data.messages.slice(-12).reverse().map(item => `<div class="memory-entry"><span>${escapeHtml(item.role.toUpperCase())}</span>${escapeHtml(item.content)}</div>`).join('')
+      : '<div class="empty-state">No saved conversations yet.</div>';
+    renderFacts();
+  } catch (error) { memoryFeedback(error.message); }
+}
+async function mutateMemory(path, body) {
+  const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Could not save memory.');
+  return result;
+}
+document.querySelector('#memory-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('[type="submit"]');
+  if (button.disabled) return;
+  button.disabled = true;
+  const id = document.querySelector('#memory-id').value;
+  try {
+    await mutateMemory(id ? `/api/memory/${id}/update` : '/api/memory', {
+      category: document.querySelector('#memory-category').value.trim(),
+      content: document.querySelector('#memory-content').value.trim()
+    });
+    resetMemoryForm();
+    await loadMemory();
+    memoryFeedback(id ? 'Fact updated.' : 'Fact saved locally.');
+  } catch (error) { memoryFeedback(error.message); }
+  finally { button.disabled = false; }
+});
+document.querySelector('#memory-cancel').addEventListener('click', resetMemoryForm);
+document.querySelector('#memory-search').addEventListener('input', renderFacts);
+document.querySelector('#memory-facts').addEventListener('click', async event => {
+  const edit = event.target.closest('[data-memory-edit]');
+  const remove = event.target.closest('[data-memory-delete]');
+  if (edit) {
+    const item = savedFacts.find(fact => fact.id === Number(edit.dataset.memoryEdit));
+    if (!item) return;
+    document.querySelector('#memory-id').value = item.id;
+    document.querySelector('#memory-category').value = item.category;
+    document.querySelector('#memory-content').value = item.content;
+    document.querySelector('#memory-cancel').hidden = false;
+    document.querySelector('#memory-content').focus();
+  } else if (remove && window.confirm('Delete this saved fact? Previous conversations and copies already sent to a model remain.')) {
+    remove.disabled = true;
+    try {
+      await mutateMemory(`/api/memory/${remove.dataset.memoryDelete}/delete`, {});
+      if (document.querySelector('#memory-id').value === remove.dataset.memoryDelete) resetMemoryForm();
+      await loadMemory();
+      memoryFeedback('Fact deleted.');
+    } catch (error) { memoryFeedback(error.message); remove.disabled = false; }
+  }
+});
+
+document.querySelectorAll('[data-view]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const view = button.dataset.view;
+    document.querySelectorAll('.view').forEach((element) => element.classList.remove('active-view'));
+    document.querySelector(`#view-${view}`).classList.add('active-view');
+    document.querySelectorAll('[data-view]').forEach((element) => element.classList.toggle('active', element === button));
+    document.querySelector('#crumb-current').textContent = button.textContent.trim().replace('BUILDING', '').trim();
+    if (view === 'memory') loadMemory();
+    if (view === 'workflows') loadWorkflows();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+});
+
+function updateClock() {
+  document.querySelector('#clock').textContent = new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit', minute: '2-digit', hour12: false
+  }).format(new Date());
+}
+updateClock();
+setInterval(updateClock, 30_000);
+refreshStatus();
+setInterval(refreshStatus, 60_000);
+
+// Start a new Hermes conversation without deleting history or replaying old work.
+document.querySelector('#new-conversation').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  if (sendButton.disabled) return;
+  button.disabled = true;
+  sendButton.disabled = true;
+  try {
+    const response = await fetch('/api/chat/new', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not start a new conversation.');
+    addMessage('assistant', 'New conversation ready. Previous history is preserved in Memory; earlier tasks have not been restarted.');
+    document.querySelector('#include-memory').checked = false;
+  } catch (error) { addMessage('assistant', error.message); }
+  finally { button.disabled = false; sendButton.disabled = false; input.focus(); }
+});

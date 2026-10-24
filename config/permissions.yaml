@@ -1,0 +1,26 @@
+# PERMISSIONS CONTROL
+
+levels:
+  0: "Read-only"
+  1: "Safe local modifications"
+  2: "External communications"
+  3: "Sensitive actions"
+  4: "Dangerous/irreversible actions"
+
+defaults:
+  require_confirmation_above: 1
+  allowed_directories:
+    - "D:\\JARVIS"
+    - "C:\\Users\\karan\\Desktop\\JARVIS"
+    - "D:\\Projects"
+    - "D:\\Data"
+
+skills:
+  file_management:
+    level: 1
+  email_drafting:
+    level: 1
+  email_sending:
+    level: 2
+  system_commands:
+    level: 4
