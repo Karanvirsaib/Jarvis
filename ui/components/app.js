@@ -3,7 +3,54 @@ const form = document.querySelector('#chat-form');
 const input = document.querySelector('#message-input');
 const sendButton = form.querySelector('.send-button');
 const voiceButton = document.querySelector('#voice-input');
+const attachButton = document.querySelector('#attach-files');
+const attachedFilesNode = document.querySelector('#attached-files');
+let selectedLocalFiles = [];
 const visualChannel = 'BroadcastChannel' in window ? new BroadcastChannel('jarvis-visualizer') : null;
+
+function renderAttachedFiles() {
+  attachedFilesNode.replaceChildren();
+  attachedFilesNode.hidden = selectedLocalFiles.length === 0;
+  selectedLocalFiles.forEach((file, index) => {
+    const chip = document.createElement('span');
+    chip.className = 'attached-file';
+    const name = document.createElement('span');
+    name.textContent = `📎 ${file.name}`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'remove-attachment';
+    remove.setAttribute('aria-label', `Remove ${file.name}`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      selectedLocalFiles = selectedLocalFiles.filter((_, itemIndex) => itemIndex !== index);
+      renderAttachedFiles();
+    });
+    chip.append(name, remove);
+    attachedFilesNode.append(chip);
+  });
+}
+
+attachButton?.addEventListener('click', async () => {
+  if (attachButton.disabled) return;
+  attachButton.disabled = true;
+  attachButton.textContent = 'Opening…';
+  try {
+    const response = await fetch('/api/files/pick', { method: 'POST' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not open the file picker.');
+    const known = new Set(selectedLocalFiles.map(file => file.path));
+    for (const file of result.files || []) {
+      if (!known.has(file.path) && selectedLocalFiles.length < 10) selectedLocalFiles.push(file);
+      known.add(file.path);
+    }
+    renderAttachedFiles();
+  } catch (error) {
+    addMessage('assistant', error.message || 'Could not open the local file picker.');
+  } finally {
+    attachButton.disabled = false;
+    attachButton.textContent = '＋ Files';
+  }
+});
 
 function setFaceState(state, detail = '') {
   const event = { type: 'state', state, detail, at: Date.now() };
@@ -43,9 +90,29 @@ async function refreshStatus() {
     const harnessPill = document.querySelector('#harness-pill');
     harnessPill.innerHTML = `<i></i> ${status.hermes_online ? 'CONNECTED' : 'OFFLINE'}`;
     harnessPill.className = `status-pill ${status.hermes_online ? 'good' : 'neutral'}`;
+    const delegationConfigured = status.delegation_configured ?? Number(status.delegation_max_parallel) > 0;
+    const executedTools = Array.isArray(status.tool_execution_verified_tools)
+      ? status.tool_execution_verified_tools.filter(Boolean).join(', ') : '';
+    const agentsStatus = document.querySelector('#agents-status');
+    if (agentsStatus) {
+      agentsStatus.textContent = status.council_available
+        ? 'Council review is available for substantial tasks. Delegation results are shown only after a child completion event.'
+        : status.delegation_runtime_verified
+          ? 'Hermes recorded a completed delegated task in this Jarvis session. Role cards are blueprints; agents are created for individual tasks.'
+          : 'Hermes delegation is enabled, but Jarvis has not verified a completed child-agent run. Council review is not implemented yet; these cards are role blueprints only.';
+    }
     document.querySelector('#harness-note').textContent = status.hermes_online
-      ? 'Council review · up to 3 concurrent delegates · bounded runs'
+      ? `${delegationConfigured ? 'Delegation configured' : 'Delegation unavailable'} · ${status.tool_execution_verified
+        ? `tool calls verified${executedTools ? `: ${executedTools}` : ''}`
+        : 'tool calls not yet verified'}`
       : 'Start Hermes through scripts/start_jarvis.ps1';
+    const memoryNote = document.querySelector('#memory-note');
+    if (memoryNote) {
+      const profileState = typeof status.user_profile_document_available === 'boolean'
+        ? status.user_profile_document_available ? 'Local profile available by request' : 'No profile document found'
+        : 'Profile inclusion ready after server restart';
+      memoryNote.textContent = `${profileState} · Honcho ${status.honcho_connected ? 'connected' : 'not connected'}`;
+    }
     const honchoState = document.querySelector('#honcho-state');
     if (honchoState) honchoState.textContent = status.honcho_connected
       ? 'CONNECTED'
@@ -54,11 +121,17 @@ async function refreshStatus() {
         : 'NOT INSTALLED';
     const browserState = document.querySelector('#browser-state');
     if (browserState) browserState.textContent = status.browser_tools_available
-      ? 'TOOLS AVAILABLE · LOGIN SEPARATE' : 'NOT AVAILABLE';
+      ? 'TOOLS ENABLED · LOGIN SEPARATE · EXECUTION UNVERIFIED' : 'NOT AVAILABLE';
+    const jobsState = document.querySelector('#job-search-state');
+    if (jobsState) jobsState.textContent = status.job_search_available && status.xlsx_export_available && status.resume_pdf_extraction_available
+      ? 'SEARCH TOOLS CONFIGURED · LOCAL PDF · EXCEL READY'
+      : status.job_search_available
+        ? status.resume_pdf_extraction_available ? 'SEARCH TOOLS CONFIGURED · EXPORT SETUP NEEDED' : 'SEARCH TOOLS CONFIGURED · PDF READER NEEDED'
+        : 'WEB SEARCH NOT AVAILABLE';
     const pcState = document.querySelector('#pc-state');
     if (pcState) pcState.textContent = status.desktop_control_available
-      ? 'FILES · TERMINAL · DESKTOP CONTROL READY'
-      : status.workspace_file_tools_available ? 'WORKSPACE FILES & TERMINAL READY' : 'NOT AVAILABLE';
+      ? 'TOOLS ENABLED · LIVE EXECUTION UNVERIFIED'
+      : status.workspace_file_tools_available ? 'FILES & TERMINAL ENABLED · EXECUTION UNVERIFIED' : 'NOT AVAILABLE';
     for (const id of ['gmail-state', 'calendar-state', 'drive-state']) {
       const element = document.querySelector(`#${id}`);
       if (element && status.google_workspace_skill_available) element.textContent = status.google_oauth_connected
@@ -68,8 +141,9 @@ async function refreshStatus() {
     if (youtubeState) youtubeState.textContent = status.youtube_skill_available
       ? 'VIDEO SKILL READY · CHANNEL LOGIN NEEDED' : 'NOT AVAILABLE';
     const claudeCodeState = document.querySelector('#claude-code-state');
-    if (claudeCodeState) claudeCodeState.textContent = status.claude_code_available && status.claude_code_skill_available
-      ? 'CLI & SKILL AVAILABLE · LOGIN UNVERIFIED' : 'NOT AVAILABLE';
+    if (claudeCodeState) claudeCodeState.textContent = status.claude_code_available
+      ? status.claude_code_skill_available ? 'CLI & SKILL INSTALLED · LOGIN UNVERIFIED' : 'CLI PRESENT · SKILL / LOGIN NEEDED'
+      : 'CLI NOT INSTALLED';
     document.querySelector('#service-state').textContent = status.hermes_online ? 'ONLINE' : 'LIMITED';
     document.querySelector('#service-state').style.color = status.hermes_online ? 'var(--green)' : 'var(--amber)';
     document.querySelector('#model-route').textContent = status.model_route;
@@ -104,11 +178,14 @@ async function refreshStatus() {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const message = input.value.trim();
-  if (!message || sendButton.disabled) return;
+  if ((!message && !selectedLocalFiles.length) || sendButton.disabled) return;
+  const attachments = selectedLocalFiles;
   const includeMemory = document.querySelector('#include-memory').checked;
   document.querySelector('#include-memory').checked = false;
   setFaceState('thinking');
-  addMessage('user', message);
+  addMessage('user', `${message}${attachments.length ? `${message ? '\n' : ''}${attachments.map(file => `📎 ${file.name}`).join('\n')}` : ''}`);
+  selectedLocalFiles = [];
+  renderAttachedFiles();
   input.value = '';
   input.style.height = 'auto';
   sendButton.disabled = true;
@@ -118,18 +195,27 @@ form.addEventListener('submit', async (event) => {
     const response = await fetch('/api/runs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, include_memory: includeMemory })
+      body: JSON.stringify({ message: message || 'Please inspect the selected local file(s) and tell me what you find.', include_memory: includeMemory, attachments })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Request failed');
     if (result.memory_used?.length) {
       addMessage('assistant', `Using ${result.memory_used.length} saved fact(s): ${[...new Set(result.memory_used.map(item => item.category))].join(', ')}.`);
     }
+    if (result.profile_reference_used) {
+      addMessage('assistant', 'Using your local profile document for this request; it was shared with the configured AI model because memory consent was enabled.');
+    }
     const runId = result.run_id || result.id;
     if (!runId) throw new Error('Hermes accepted the request but returned no run id.');
     const bubble = pending.querySelector('.message-bubble');
-    bubble.innerHTML = `Run ${escapeHtml(runId.slice(0, 10))} · ${escapeHtml(result.status || 'queued')}<br><button class="run-stop" type="button">Stop run</button>`;
-    const stop = bubble.querySelector('.run-stop');
+    bubble.replaceChildren(document.createTextNode(`Run ${runId.slice(0, 10)} · `));
+    const runState = document.createElement('span');
+    runState.className = 'run-live-state';
+    runState.textContent = result.status || 'queued';
+    bubble.append(runState, document.createElement('br'));
+    const stop = document.createElement('button');
+    stop.className = 'run-stop'; stop.type = 'button'; stop.textContent = 'Stop run';
+    bubble.append(stop);
     stop.addEventListener('click', async () => {
       stop.disabled = true;
       await fetch(`/api/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' });
@@ -140,6 +226,7 @@ form.addEventListener('submit', async (event) => {
       'Working through the task…', 'Taking a closer look…', 'Still at it…'
     ];
     let currentPhrase = '';
+    let approvalCardId = '';
     let polls = 0;
     while (polls++ < 600) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -147,10 +234,59 @@ form.addEventListener('submit', async (event) => {
       const status = await statusResponse.json();
       if (!statusResponse.ok) throw new Error(status.error || 'Could not read run status.');
       const state = status.status || 'running';
+      const approval = status.approval;
+      if (state === 'waiting_for_approval' && approval && approval.request_id && approvalCardId !== approval.request_id) {
+        approvalCardId = approval.request_id;
+        const card = document.createElement('section');
+        card.className = 'approval-card';
+        const heading = document.createElement('strong');
+        heading.textContent = 'Jarvis needs approval';
+        const detail = document.createElement('p');
+        detail.textContent = [approval.tool_name || approval.tool, approval.command, approval.description || approval.reason].filter(Boolean).join(' · ') || 'Hermes requested permission for an action.';
+        const approve = document.createElement('button');
+        approve.type = 'button'; approve.className = 'run-stop'; approve.textContent = 'Approve once';
+        const deny = document.createElement('button');
+        deny.type = 'button'; deny.className = 'run-stop'; deny.textContent = 'Deny';
+        const feedback = document.createElement('small');
+        async function resolveApproval(choice, button) {
+          approve.disabled = deny.disabled = true;
+          try {
+            const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/approval`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({choice, request_id:approval.request_id})});
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Approval response failed.');
+            feedback.textContent = choice === 'once' ? 'Approved for this action only.' : 'Denied.';
+          } catch (error) { feedback.textContent = error.message; approve.disabled = deny.disabled = false; }
+        }
+        approve.addEventListener('click', () => resolveApproval('once', approve));
+        deny.addEventListener('click', () => resolveApproval('deny', deny));
+        card.append(heading, detail, approve, deny, feedback);
+        bubble.append(card);
+      }
       if (['completed', 'failed', 'cancelled', 'expired'].includes(state)) {
         pending.remove();
         const answer = status.output || status.final_response || status.error || `Run ${state}.`;
-        addMessage('assistant', answer);
+        const answerNode = addMessage('assistant', answer);
+        if (status.job_export?.id) {
+          const bubble = answerNode.querySelector('.message-bubble');
+          const note = document.createElement('div');
+          note.className = 'job-export-note';
+          note.textContent = `${status.job_export.count} listing(s) exported · retrieved ${status.job_export.retrieved_at || 'just now'}`;
+          const link = document.createElement('a');
+          link.className = 'job-export-link';
+          link.href = `/api/exports/${encodeURIComponent(status.job_export.id)}`;
+          link.textContent = 'Download Excel workbook';
+          link.setAttribute('download', 'jarvis-job-matches.xlsx');
+          bubble.append(document.createElement('br'), note, link);
+        }
+        if (status.action_verification) {
+          const receipt = document.createElement('small');
+          receipt.className = `action-receipt ${status.action_verification}`;
+          const tools = Array.isArray(status.tool_evidence) ? status.tool_evidence : [];
+          receipt.textContent = status.action_verification === 'verified'
+            ? `Tool receipt: Hermes recorded successful call${tools.length === 1 ? '' : 's'}${tools.length ? ` (${tools.join(', ')})` : ''}. This confirms tool events, not the final state of an external service.`
+            : `Tool receipt: action not verified. ${status.tool_evidence_reason || 'No successful tool completion evidence was returned.'}`;
+          answerNode.querySelector('.message-bubble').append(document.createElement('br'), receipt);
+        }
         visualChannel?.postMessage({ type: 'response', text: String(answer), runState: state, at: Date.now() });
         try {
           localStorage.setItem('jarvis.face.lastResponse', JSON.stringify({ text: String(answer), at: Date.now() }));
@@ -162,11 +298,13 @@ form.addEventListener('submit', async (event) => {
         const choices = workPhrases.filter((phrase) => phrase !== currentPhrase);
         currentPhrase = choices[Math.floor(Math.random() * choices.length)];
       }
-      bubble.firstChild.textContent = `${currentPhrase} · ${state}${status.last_event ? ` · ${status.last_event}` : ''} `;
-      if (polls === 600) bubble.firstChild.textContent = 'Still running. Check Hermes logs for the current state.';
+      runState.textContent = `${currentPhrase} · ${state}${status.last_event ? ` · ${status.last_event}` : ''}`;
+      if (polls === 600) runState.textContent = 'Still running. Check Hermes logs for the current state.';
     }
     if (document.querySelector('#view-memory').classList.contains('active-view')) loadMemory();
   } catch (error) {
+    selectedLocalFiles = attachments;
+    renderAttachedFiles();
     pending.remove();
     addMessage('assistant', error.message || 'Jarvis could not reach the local service.');
     visualChannel?.postMessage({ type: 'response', text: error.message || 'Jarvis could not reach the local service.', runState: 'failed', at: Date.now() });
@@ -323,6 +461,7 @@ document.querySelectorAll('[data-view]').forEach((button) => {
     document.querySelectorAll('[data-view]').forEach((element) => element.classList.toggle('active', element === button));
     document.querySelector('#crumb-current').textContent = button.textContent.trim().replace('BUILDING', '').trim();
     if (view === 'memory') loadMemory();
+    if (view === 'knowledge') loadKnowledge();
     if (view === 'workflows') loadWorkflows();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });

@@ -25,7 +25,7 @@ if (-not (Test-Path -LiteralPath ".\venv\Scripts\python.exe")) {
 }
 
 Write-Host "Installing Core Dependencies..."
-& ".\venv\Scripts\python.exe" -m pip install requests pyyaml python-dotenv
+& ".\venv\Scripts\python.exe" -m pip install requests pyyaml python-dotenv "pypdf>=6.21,<7"
 Write-Host "Dependencies installed - PASS" -ForegroundColor Green
 
 if (-not (Test-Path -LiteralPath ".\.env") -and (Test-Path -LiteralPath ".\.env.example")) {

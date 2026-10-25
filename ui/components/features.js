@@ -3,6 +3,112 @@ const screenStatus = document.querySelector('#screen-status');
 const screenPreview = document.querySelector('#screen-preview');
 const analyzeButton = document.querySelector('#analyze-screen');
 let screenBusy = false;
+let liveScreenStream = null;
+const liveScreenVideo = document.querySelector('#live-screen-preview');
+
+function stopLiveScreenShare() {
+  liveScreenStream?.getTracks().forEach(track => track.stop());
+  liveScreenStream = null;
+  liveScreenVideo.srcObject = null;
+  liveScreenVideo.hidden = true;
+  document.querySelector('#live-screen-start').disabled = false;
+  document.querySelector('#live-screen-stop').disabled = true;
+  if (screenStatus) screenStatus.textContent = 'Screen sharing stopped. No frames stream to Jarvis in the background.';
+}
+
+document.querySelector('#live-screen-start')?.addEventListener('click', async () => {
+  if (!navigator.mediaDevices?.getDisplayMedia) { screenStatus.textContent = 'Live screen sharing is unavailable in this browser. Use Capture one frame instead.'; return; }
+  try {
+    liveScreenStream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
+    liveScreenVideo.srcObject = liveScreenStream;
+    liveScreenVideo.hidden = false;
+    await liveScreenVideo.play();
+    document.querySelector('#live-screen-start').disabled = true;
+    document.querySelector('#live-screen-stop').disabled = false;
+    liveScreenStream.getVideoTracks()[0]?.addEventListener('ended', stopLiveScreenShare, {once:true});
+    screenStatus.textContent = 'Live preview active in this tab. Jarvis captures and sends a frame only when you ask for analysis.';
+  } catch (error) { screenStatus.textContent = error.name === 'NotAllowedError' ? 'Screen share cancelled.' : error.message; }
+});
+document.querySelector('#live-screen-stop')?.addEventListener('click', stopLiveScreenShare);
+window.addEventListener('beforeunload', () => liveScreenStream?.getTracks().forEach(track => track.stop()));
+
+async function captureCurrentLiveFrame() {
+  if (!liveScreenStream || liveScreenVideo.readyState < 2) return false;
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(1, 1600 / Math.max(liveScreenVideo.videoWidth, liveScreenVideo.videoHeight));
+  canvas.width = Math.max(1, Math.round(liveScreenVideo.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(liveScreenVideo.videoHeight * scale));
+  canvas.getContext('2d').drawImage(liveScreenVideo, 0, 0, canvas.width, canvas.height);
+  await previewScreen(await new Promise(resolve => canvas.toBlob(resolve, 'image/png')));
+  return true;
+}
+let knowledgeIndex = [];
+let knowledgeRoots = [];
+
+function renderKnowledgeRoots() {
+  const node = document.querySelector('#knowledge-roots');
+  node.replaceChildren();
+  if (!knowledgeRoots.length) { node.textContent = 'No approved folders. Add one to start.'; return; }
+  for (const path of knowledgeRoots) {
+    const row = document.createElement('div'); row.className = 'knowledge-root';
+    const label = document.createElement('span'); label.textContent = path;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'run-stop'; remove.textContent = 'Remove';
+    remove.addEventListener('click', async () => {
+      remove.disabled = true;
+      try {
+        const response = await fetch('/api/knowledge/remove', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path})});
+        const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not remove folder.');
+        knowledgeRoots = data.roots || []; knowledgeIndex = data.files || []; renderKnowledgeRoots(); renderKnowledge();
+      } catch (error) { remove.disabled = false; remove.title = error.message; }
+    });
+    row.append(label, remove); node.append(row);
+  }
+}
+
+async function loadKnowledge() {
+  const list = document.querySelector('#knowledge-files');
+  if (!list) return;
+  list.replaceChildren(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'Scanning approved folders…'}));
+  try {
+    const response = await fetch('/api/knowledge', {cache:'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not scan approved folders.');
+    knowledgeIndex = data.files || [];
+    knowledgeRoots = data.roots || []; renderKnowledgeRoots();
+    renderKnowledge();
+  } catch (error) { list.textContent = error.message; }
+}
+
+function renderKnowledge() {
+  const list = document.querySelector('#knowledge-files');
+  if (!list) return;
+  const term = document.querySelector('#knowledge-search').value.trim().toLowerCase();
+  const matches = knowledgeIndex.filter(item => `${item.name} ${item.folder}`.toLowerCase().includes(term));
+  list.replaceChildren();
+  if (!matches.length) { list.append(Object.assign(document.createElement('div'), {className:'empty-state', textContent:'No matching files found.'})); return; }
+  for (const item of matches.slice(0, 300)) {
+    const row = document.createElement('article'); row.className = 'knowledge-file';
+    const name = document.createElement('strong'); name.textContent = item.name;
+    const meta = document.createElement('small'); meta.textContent = `${item.type} · ${item.folder} · ${(item.size / 1024).toFixed(1)} KB`;
+    row.append(name, meta); list.append(row);
+  }
+  if (matches.length > 300) list.append(Object.assign(document.createElement('small'), {textContent:`Showing 300 of ${matches.length} files.`}));
+}
+
+document.querySelector('#knowledge-add')?.addEventListener('click', async event => {
+  const button = event.currentTarget; button.disabled = true;
+  try {
+    const response = await fetch('/api/knowledge/pick', {method:'POST'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Folder selection failed.');
+    knowledgeIndex = data.files || [];
+    knowledgeRoots = data.roots || []; renderKnowledgeRoots();
+    renderKnowledge();
+  } catch (error) { document.querySelector('#knowledge-files').textContent = error.message; }
+  finally { button.disabled = false; }
+});
+document.querySelector('#knowledge-refresh')?.addEventListener('click', loadKnowledge);
+document.querySelector('#knowledge-search')?.addEventListener('input', renderKnowledge);
 
 async function previewScreen(blob) {
   if (blob.size > 20 * 1024 * 1024) throw new Error('Choose an image smaller than 20 MB.');
@@ -66,6 +172,7 @@ document.querySelector('#clear-screen').addEventListener('click', () => {
 });
 document.querySelector('#screen-form').addEventListener('submit', async event => {
   event.preventDefault();
+  try { await captureCurrentLiveFrame(); } catch (error) { screenStatus.textContent = error.message; return; }
   if (!screenImage || screenBusy) return;
   screenBusy = true;
   document.querySelector('#screen-answer').hidden = true;

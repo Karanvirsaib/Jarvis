@@ -49,6 +49,18 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(LocalMemoryStore(self.path).chat_session(), second)
         self.assertEqual(self.store.get_recent_context(), [('user', 'Keep this history')])
 
+    def test_chat_history_and_assistant_results_are_session_scoped(self):
+        first = self.store.chat_session()
+        self.store.add_message('user', 'First conversation detail', session_id=first)
+        self.store.set_run_session('run_first', first)
+        self.store.add_run_result('run_first', 'First conversation answer')
+        second = self.store.chat_session(new=True)
+        self.store.add_message('user', 'Second conversation detail', session_id=second)
+        self.assertEqual(self.store.get_recent_context(session_id=first), [
+            ('user', 'First conversation detail'), ('assistant', 'First conversation answer')])
+        self.assertEqual(self.store.get_recent_context(session_id=second), [
+            ('user', 'Second conversation detail')])
+
     def test_terminal_run_history_is_idempotent_across_restart(self):
         self.store.add_run_result('run_example', 'Completed')
         reopened = LocalMemoryStore(self.path)
@@ -108,12 +120,14 @@ class ApiTests(unittest.TestCase):
             first = hermes.call_args.kwargs['json']['session_id']
             self.assertNotEqual(first, 'jarvis-local-workspace')
             self.request('/api/runs', {'message':'Again'})
-            self.assertEqual(hermes.call_args.kwargs['json']['session_id'], first)
+            second = hermes.call_args.kwargs['json']['session_id']
+            self.assertNotEqual(second, first)
             status, result = self.request('/api/chat/new', {})
             self.assertEqual(status,200)
             self.request('/api/runs', {'message':'Fresh'})
-            self.assertEqual(hermes.call_args.kwargs['json']['session_id'], result['session_id'])
-            self.assertNotEqual(first, result['session_id'])
+            third = hermes.call_args.kwargs['json']['session_id']
+            self.assertNotEqual(third, result['session_id'])
+            self.assertNotEqual(second, third)
 
     def test_run_memory_is_explicit_and_bounded(self):
         self.store.add_fact('Preferences','Prefer concise replies')
@@ -129,5 +143,19 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(len(result['memory_used']),1)
             self.assertEqual(self.request('/api/runs', {'message':'Hello','include_memory':'yes'})[0],400)
             self.assertEqual(hermes.call_count,2)
+
+    def test_same_chat_context_is_included_but_new_chat_context_is_isolated(self):
+        response=unittest.mock.Mock(status_code=202)
+        response.json.return_value={'id':'context-run','status':'queued'}
+        with patch.object(server, '_hermes_request', return_value=response) as hermes:
+            self.assertEqual(self.request('/api/runs', {'message':'Find data analyst roles in Toronto'})[0],202)
+            self.request('/api/runs', {'message':'Check this as well'})
+            same_chat_input=hermes.call_args.kwargs['json']['input']
+            self.assertIn('Find data analyst roles in Toronto', same_chat_input)
+            fresh=self.request('/api/chat/new', {})[1]['session_id']
+            self.request('/api/runs', {'message':'Check this as well'})
+            new_chat_input=hermes.call_args.kwargs['json']['input']
+            self.assertNotEqual(hermes.call_args.kwargs['json']['session_id'], fresh)
+            self.assertNotIn('Find data analyst roles in Toronto', new_chat_input)
 
 if __name__ == '__main__': unittest.main()

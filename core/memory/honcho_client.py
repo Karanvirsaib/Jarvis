@@ -43,10 +43,15 @@ class LocalMemoryStore:
                 id INTEGER PRIMARY KEY,
                 role TEXT,
                 content TEXT,
-                timestamp REAL
+                timestamp REAL,
+                session_id TEXT NOT NULL DEFAULT 'legacy'
             )
         ''')
+        history_columns = {row[1] for row in cur.execute("PRAGMA table_info(conversation_history)")}
+        if "session_id" not in history_columns:
+            cur.execute("ALTER TABLE conversation_history ADD COLUMN session_id TEXT NOT NULL DEFAULT 'legacy'")
         cur.execute("CREATE TABLE IF NOT EXISTS recorded_runs (run_id TEXT PRIMARY KEY)")
+        cur.execute("CREATE TABLE IF NOT EXISTS run_sessions (run_id TEXT PRIMARY KEY, session_id TEXT NOT NULL)")
         cur.execute("CREATE TABLE IF NOT EXISTS application_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         conn.commit()
         conn.close()
@@ -57,19 +62,38 @@ class LocalMemoryStore:
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT value FROM application_state WHERE key='chat_session'").fetchone()
+            session_id = row[0] if row else 'jarvis-chat-' + uuid.uuid4().hex
+            # Old installs stored chat history without a session id. Attribute those
+            # rows to the active session once, before any later chat rotation.
+            conn.execute("UPDATE conversation_history SET session_id=? WHERE session_id='legacy'", (session_id,))
             if row and not new:
-                return row[0]
-            session_id = 'jarvis-chat-' + uuid.uuid4().hex
+                return session_id
+            if row and new:
+                session_id = 'jarvis-chat-' + uuid.uuid4().hex
             conn.execute("INSERT OR REPLACE INTO application_state(key,value) VALUES('chat_session',?)", (session_id,))
             return session_id
 
-    def add_run_result(self, run_id, content):
+    def set_run_session(self, run_id, session_id):
+        if not isinstance(run_id, str) or not run_id or not isinstance(session_id, str) or not session_id:
+            raise ValueError("Run and session ids must be non-empty strings")
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute("INSERT OR REPLACE INTO run_sessions(run_id,session_id) VALUES(?,?)", (run_id, session_id))
+
+    def get_run_session(self, run_id):
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute("SELECT session_id FROM run_sessions WHERE run_id=?", (run_id,)).fetchone()
+        return row[0] if row else "legacy"
+
+    def add_run_result(self, run_id, content, session_id=None):
         # One transaction keeps repeated dashboard polling/restarts from duplicating history.
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
             inserted = conn.execute("INSERT OR IGNORE INTO recorded_runs(run_id) VALUES(?)", (run_id,)).rowcount
             if inserted and content:
-                conn.execute("INSERT INTO conversation_history(role,content,timestamp) VALUES('assistant',?,?)",
-                             (content, time.time()))
+                if session_id is None:
+                    row = conn.execute("SELECT session_id FROM run_sessions WHERE run_id=?", (run_id,)).fetchone()
+                    session_id = row[0] if row else "legacy"
+                conn.execute("INSERT INTO conversation_history(role,content,timestamp,session_id) VALUES('assistant',?,?,?)",
+                             (content, time.time(), session_id))
 
     @staticmethod
     def _validate_fact(category, fact):
@@ -139,18 +163,18 @@ class LocalMemoryStore:
         conn.close()
         return results
 
-    def add_message(self, role: str, content: str):
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute("INSERT INTO conversation_history (role, content, timestamp) VALUES (?, ?, ?)",
-                    (role, content, time.time()))
-        conn.commit()
-        conn.close()
+    def add_message(self, role: str, content: str, session_id: str = "legacy"):
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute("INSERT INTO conversation_history (role, content, timestamp, session_id) VALUES (?, ?, ?, ?)",
+                         (role, content, time.time(), session_id))
 
-    def get_recent_context(self, limit: int = 10) -> list:
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute("SELECT role, content FROM conversation_history ORDER BY timestamp DESC LIMIT ?", (limit,))
-        results = cur.fetchall()
-        conn.close()
+    def get_recent_context(self, limit: int = 10, session_id: str = None) -> list:
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            cur = conn.cursor()
+            if session_id is None:
+                cur.execute("SELECT role, content FROM conversation_history ORDER BY timestamp DESC LIMIT ?", (limit,))
+            else:
+                cur.execute("SELECT role, content FROM conversation_history WHERE session_id=? ORDER BY timestamp DESC LIMIT ?",
+                            (session_id, limit))
+            results = cur.fetchall()
         return list(reversed(results))

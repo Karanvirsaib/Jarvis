@@ -17,8 +17,12 @@ class WorkflowStore:
                     steps TEXT NOT NULL, created_at REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS workflow_runs (
                     run_id TEXT PRIMARY KEY, workflow_id INTEGER, title TEXT NOT NULL,
-                    status TEXT NOT NULL, output TEXT NOT NULL DEFAULT '', updated_at REAL NOT NULL);
+                    status TEXT NOT NULL, output TEXT NOT NULL DEFAULT '', request_text TEXT NOT NULL DEFAULT '',
+                    updated_at REAL NOT NULL);
             ''')
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(workflow_runs)")}
+            if "request_text" not in columns:
+                conn.execute("ALTER TABLE workflow_runs ADD COLUMN request_text TEXT NOT NULL DEFAULT ''")
     def connect(self):
         return closing(sqlite3.connect(self.path))
     def create(self, title, objective, steps):
@@ -42,10 +46,14 @@ class WorkflowStore:
         return items
     def get(self, workflow_id):
         return next((item for item in self.list() if item['id'] == workflow_id), None)
-    def add_run(self, run_id, title, workflow_id=None, status='queued'):
+    def add_run(self, run_id, title, workflow_id=None, status='queued', request_text=''):
         with self.connect() as conn, conn:
-            conn.execute('INSERT OR IGNORE INTO workflow_runs(run_id,workflow_id,title,status,updated_at) VALUES(?,?,?,?,?)',
-                (run_id, workflow_id, title[:100], status, time.time()))
+            conn.execute('INSERT OR IGNORE INTO workflow_runs(run_id,workflow_id,title,status,request_text,updated_at) VALUES(?,?,?,?,?,?)',
+                (run_id, workflow_id, title[:100], status, request_text[:8000], time.time()))
+    def get_run_request(self, run_id):
+        with self.connect() as conn:
+            row = conn.execute('SELECT request_text FROM workflow_runs WHERE run_id=?', (run_id,)).fetchone()
+        return row[0] if row else ''
     def update_run(self, run_id, status, output=''):
         with self.connect() as conn, conn:
             conn.execute('UPDATE workflow_runs SET status=?,output=?,updated_at=? WHERE run_id=?',
@@ -53,4 +61,5 @@ class WorkflowStore:
     def runs(self):
         with self.connect() as conn:
             conn.row_factory = sqlite3.Row
-            return [dict(row) for row in conn.execute('SELECT * FROM workflow_runs ORDER BY updated_at DESC LIMIT 100')]
+            return [dict(row) for row in conn.execute(
+                'SELECT run_id,workflow_id,title,status,output,updated_at FROM workflow_runs ORDER BY updated_at DESC LIMIT 100')]

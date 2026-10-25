@@ -11,6 +11,17 @@
 .voice-input { width: 29px; height: 28px; border: 1px solid rgba(112,227,223,.18); border-radius: 5px; background: rgba(112,227,223,.045); color: var(--cyan); font-size: 19px; line-height: 1; cursor: pointer; }
 .voice-input:hover, .voice-input.listening { border-color: var(--cyan); background: rgba(112,227,223,.14); box-shadow: 0 0 12px rgba(112,227,223,.13); }
 .voice-input:disabled { opacity: .4; cursor: not-allowed; }
+.attach-files { height: 28px; border: 1px solid rgba(112,227,223,.18); border-radius: 5px; padding: 0 8px; background: rgba(112,227,223,.045); color: #a5c5c8; font: 8px var(--mono); letter-spacing: .04em; cursor: pointer; }
+.attach-files:hover { border-color: rgba(112,227,223,.5); background: rgba(112,227,223,.12); color: var(--cyan-bright); }
+.attach-files:disabled { opacity: .55; cursor: wait; }
+.attached-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 9px; }
+.attached-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 6px; border: 1px solid rgba(112,227,223,.16); border-radius: 5px; color: #aac0c3; background: rgba(112,227,223,.045); font: 8px var(--mono); }
+.attached-file>span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remove-attachment { border: 0; padding: 0 2px; color: #83979d; background: transparent; font-size: 14px; line-height: 1; cursor: pointer; }
+.remove-attachment:hover { color: var(--amber); }
+.job-export-note { margin-top: 9px; color: #849ba1; font: 8px var(--mono); }
+.job-export-link { display: inline-flex; margin-top: 7px; padding: 7px 9px; border: 1px solid rgba(112,227,223,.24); border-radius: 5px; color: var(--cyan-bright); background: rgba(112,227,223,.07); font: 9px var(--mono); text-decoration: none; }
+.job-export-link:hover { border-color: var(--cyan); background: rgba(112,227,223,.14); }
 
 .google-setup { margin-top: 18px; padding: 22px; max-width: 780px; }
 .google-setup h2 { margin: 8px 0; font: 600 18px var(--display); }
