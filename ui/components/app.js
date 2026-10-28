@@ -81,6 +81,101 @@ function addMessage(role, content, { temporary = false } = {}) {
   return node;
 }
 
+const taskWorkspace = document.querySelector('#task-workspace');
+let activeTaskRunId = '';
+
+function taskPhase(label, detail, state) {
+  const row = document.createElement('div');
+  row.className = `task-phase ${state}`;
+  const marker = document.createElement('span'); marker.className = 'task-phase-marker';
+  const copy = document.createElement('div'); copy.className = 'task-phase-copy';
+  const title = document.createElement('strong'); title.textContent = label;
+  const note = document.createElement('small'); note.textContent = detail;
+  copy.append(title, note); row.append(marker, copy);
+  return row;
+}
+
+function renderTaskWorkspace(message, runId, status = {}) {
+  const state = String(status.status || 'queued').toLowerCase();
+  const terminal = ['completed', 'failed', 'cancelled', 'expired'].includes(state);
+  const stateLabel = state === 'waiting_for_approval' ? 'NEEDS APPROVAL' : state.replaceAll('_', ' ').toUpperCase();
+  document.querySelector('#task-workspace-title').textContent = message.slice(0, 96) || 'Working on your task';
+  document.querySelector('#task-focus-title').textContent = message.slice(0, 150) || 'Working on your task';
+  document.querySelector('#task-run-state').textContent = stateLabel;
+  document.querySelector('#task-run-state').className = `task-run-pill ${terminal ? state : 'active'}`;
+  document.querySelector('#task-run-id').textContent = `Run ${runId}`;
+  const lastEvent = typeof status.last_event === 'string' ? status.last_event.trim().slice(0, 180) : '';
+  document.querySelector('#task-focus-status').textContent = state === 'waiting_for_approval'
+    ? 'Waiting for your approval in the chat panel.'
+    : terminal ? `Task ${state}${lastEvent ? ` · ${lastEvent}` : ''}`
+      : `${state === 'queued' ? 'Queued for execution' : 'Hermes is working'}${lastEvent ? ` · ${lastEvent}` : ''}`;
+  const phases = document.querySelector('#task-phase-list');
+  phases.replaceChildren(
+    taskPhase('Request received', 'Task accepted by Jarvis', 'complete'),
+    taskPhase('Hermes execution', state === 'queued' ? 'Waiting to start' : lastEvent || `Run state: ${state}`, terminal ? 'complete' : 'active'),
+    taskPhase('Result', terminal ? `Run ${state}` : 'Waiting for run completion', terminal ? 'complete' : 'pending'),
+  );
+  const activity = document.querySelector('#task-activity');
+  const events = Array.isArray(status.activity) ? status.activity : [];
+  const verifiedTools = Array.isArray(status.tool_evidence) ? status.tool_evidence : [];
+  const entries = events.length ? events : verifiedTools.map(name => ({kind:'tool', name, state:'completed'}));
+  document.querySelector('#task-observed-count').textContent = `${entries.length} EVENT${entries.length === 1 ? '' : 'S'}`;
+  activity.replaceChildren();
+  if (!entries.length) {
+    const empty = document.createElement('div'); empty.className = 'empty-state';
+    empty.textContent = 'No agent or tool events recorded yet. Jarvis will show only work Hermes reports.';
+    activity.append(empty);
+  } else {
+    for (const entry of entries) {
+      const card = document.createElement('article'); card.className = `task-activity-card ${entry.kind === 'agent' ? 'agent' : 'tool'}`;
+      const glyph = document.createElement('span'); glyph.className = 'task-activity-glyph'; glyph.textContent = entry.kind === 'agent' ? '⌘' : '⌁';
+      const copy = document.createElement('div'); copy.className = 'task-activity-copy';
+      const name = document.createElement('strong'); name.textContent = `${entry.kind === 'agent' ? 'Agent' : 'Tool'} · ${String(entry.name || 'Unknown').slice(0, 80)}`;
+      const detail = document.createElement('small'); detail.textContent = [entry.task, entry.state].filter(Boolean).join(' · ') || 'Event recorded';
+      copy.append(name, detail); card.append(glyph, copy); activity.append(card);
+    }
+  }
+  const stopButton = document.querySelector('#task-stop');
+  stopButton.disabled = terminal;
+  stopButton.textContent = terminal ? 'Task ended' : 'Stop task';
+  taskWorkspace.dataset.runState = state;
+}
+
+function openTaskWorkspace() {
+  if (!taskWorkspace.open) taskWorkspace.showModal();
+}
+
+window.updateJarvisTask = (message, runId, status, options = {}) => {
+  activeTaskRunId = runId;
+  window.activeJarvisTaskRunId = runId;
+  if (options.open) document.querySelector('#task-result-panel').hidden = true;
+  renderTaskWorkspace(message, runId, status);
+  if (options.result !== undefined) setTaskResult(options.result);
+  if (options.open) openTaskWorkspace();
+};
+
+function setTaskResult(result) {
+  const panel = document.querySelector('#task-result-panel');
+  panel.hidden = false;
+  document.querySelector('#task-result').textContent = String(result || 'Run ended without a result.');
+}
+
+document.querySelector('#task-workspace-close').addEventListener('click', () => taskWorkspace.close());
+document.querySelector('#task-workspace-done').addEventListener('click', () => taskWorkspace.close());
+document.querySelector('#task-stop').addEventListener('click', async event => {
+  if (!activeTaskRunId) return;
+  event.currentTarget.disabled = true;
+  try {
+    const response = await fetch(`/api/runs/${encodeURIComponent(activeTaskRunId)}/stop`, {method:'POST'});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not stop task.');
+    document.querySelector('#task-focus-status').textContent = 'Stop requested. Waiting for Hermes to confirm.';
+  } catch (error) {
+    document.querySelector('#task-focus-status').textContent = error.message;
+    event.currentTarget.disabled = false;
+  }
+});
+
 async function refreshStatus() {
   try {
     const response = await fetch('/api/status', { cache: 'no-store' });
@@ -180,6 +275,7 @@ form.addEventListener('submit', async (event) => {
   const message = input.value.trim();
   if ((!message && !selectedLocalFiles.length) || sendButton.disabled) return;
   const attachments = selectedLocalFiles;
+  const autoOpenTaskRoom = attachments.length > 0 || message.length > 80 || /\b(build|make|create|analy[sz]e|inspect|research|find|search|run|edit|fix|update|automate|plan|compare|review|summari[sz]e|draft|apply|organize|convert|generate|calculate|process|clean|visuali[sz]e|dashboard|job|resume|spreadsheet|excel)\b/i.test(message);
   const includeMemory = document.querySelector('#include-memory').checked;
   document.querySelector('#include-memory').checked = false;
   setFaceState('thinking');
@@ -189,6 +285,8 @@ form.addEventListener('submit', async (event) => {
   input.value = '';
   input.style.height = 'auto';
   sendButton.disabled = true;
+  activeTaskRunId = '';
+  window.activeJarvisTaskRunId = '';
   document.querySelector("#new-conversation").disabled = true;
   const pending = addMessage('assistant', 'Starting Hermes run…', { temporary: true });
   try {
@@ -207,6 +305,11 @@ form.addEventListener('submit', async (event) => {
     }
     const runId = result.run_id || result.id;
     if (!runId) throw new Error('Hermes accepted the request but returned no run id.');
+    activeTaskRunId = runId;
+    window.activeJarvisTaskRunId = runId;
+    document.querySelector('#task-result-panel').hidden = true;
+    renderTaskWorkspace(message || attachments.map(file => file.name).join(', '), runId, result);
+    if (autoOpenTaskRoom) openTaskWorkspace();
     const bubble = pending.querySelector('.message-bubble');
     bubble.replaceChildren(document.createTextNode(`Run ${runId.slice(0, 10)} · `));
     const runState = document.createElement('span');
@@ -215,7 +318,10 @@ form.addEventListener('submit', async (event) => {
     bubble.append(runState, document.createElement('br'));
     const stop = document.createElement('button');
     stop.className = 'run-stop'; stop.type = 'button'; stop.textContent = 'Stop run';
-    bubble.append(stop);
+    const openTask = document.createElement('button');
+    openTask.className = 'run-stop'; openTask.type = 'button'; openTask.textContent = 'Open task room';
+    openTask.addEventListener('click', openTaskWorkspace);
+    bubble.append(stop, openTask);
     stop.addEventListener('click', async () => {
       stop.disabled = true;
       await fetch(`/api/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' });
@@ -234,6 +340,7 @@ form.addEventListener('submit', async (event) => {
       const status = await statusResponse.json();
       if (!statusResponse.ok) throw new Error(status.error || 'Could not read run status.');
       const state = status.status || 'running';
+      renderTaskWorkspace(message || attachments.map(file => file.name).join(', '), runId, status);
       const approval = status.approval;
       if (state === 'waiting_for_approval' && approval && approval.request_id && approvalCardId !== approval.request_id) {
         approvalCardId = approval.request_id;
@@ -265,6 +372,7 @@ form.addEventListener('submit', async (event) => {
       if (['completed', 'failed', 'cancelled', 'expired'].includes(state)) {
         pending.remove();
         const answer = status.output || status.final_response || status.error || `Run ${state}.`;
+        setTaskResult(answer);
         const answerNode = addMessage('assistant', answer);
         if (status.job_export?.id) {
           const bubble = answerNode.querySelector('.message-bubble');
@@ -307,6 +415,10 @@ form.addEventListener('submit', async (event) => {
     renderAttachedFiles();
     pending.remove();
     addMessage('assistant', error.message || 'Jarvis could not reach the local service.');
+    if (activeTaskRunId) {
+      renderTaskWorkspace(message || 'Task could not start', activeTaskRunId, {status:'failed', last_event:error.message || 'Request failed'});
+      setTaskResult(error.message || 'Jarvis could not reach the local service.');
+    }
     visualChannel?.postMessage({ type: 'response', text: error.message || 'Jarvis could not reach the local service.', runState: 'failed', at: Date.now() });
     try { localStorage.setItem('jarvis.face.state', JSON.stringify({ state: 'idle', detail: 'The request stopped. You can try again.', at: Date.now() })); } catch (_) {}
   } finally {
@@ -462,6 +574,7 @@ document.querySelectorAll('[data-view]').forEach((button) => {
     document.querySelector('#crumb-current').textContent = button.textContent.trim().replace('BUILDING', '').trim();
     if (view === 'memory') loadMemory();
     if (view === 'knowledge') loadKnowledge();
+    if (view === 'content') loadContentBoard();
     if (view === 'workflows') loadWorkflows();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });

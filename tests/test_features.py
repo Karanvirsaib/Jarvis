@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from core.screen_context import validate_image, analyze_screen
 from core.workflows import WorkflowStore
+from core.content_studio import ContentStore
 import test_memory as memory_tests
 
 def sample_image():
@@ -45,6 +46,25 @@ class WorkflowTests(unittest.TestCase):
             with self.assertRaises(ValueError):store.create('Bad','Task',['x']*13)
 
 class FeatureApiTests(memory_tests.ApiTests):
+    def test_content_studio_api_keeps_briefs_and_stages_local(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(memory_tests.server, 'content', ContentStore(Path(tmp)/'content.sqlite3')):
+            status, result = self.request('/api/content/profile', {'brand':'Karan Studio','audience':'New creators','voice':'Clear and candid','pillars':'AI, work'})
+            self.assertEqual(status, 200)
+            self.assertEqual(result['profile']['brand'], 'Karan Studio')
+            status, result = self.request('/api/content', {'title':'Make a focused assistant','channel':'YouTube','format':'Short video','topic':'Explain grounded AI agents'})
+            self.assertEqual(status, 201)
+            item_id = result['item']['id']
+            self.assertEqual(result['item']['stage'], 'idea')
+            status, result = self.request(f'/api/content/{item_id}/run', {'run_id':'content-run-1','research_requested':True})
+            self.assertEqual(status, 200)
+            self.assertEqual(result['item']['stage'], 'research')
+            self.assertEqual(result['item']['research_requested'], 1)
+            status, result = self.request(f'/api/content/{item_id}/stage', {'stage':'review'})
+            self.assertEqual(status, 200)
+            self.assertEqual(result['item']['stage'], 'review')
+            self.assertEqual(self.request('/api/content')[1]['items'][0]['id'], item_id)
+            self.assertEqual(self.request(f'/api/content/{item_id}/stage', {'stage':'skip'})[0], 400)
+
     def test_run_approval_only_allows_single_action_or_deny(self):
         response = Mock(status_code=200)
         response.json.return_value = {"resolved": 1}

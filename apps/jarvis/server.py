@@ -29,11 +29,13 @@ from core.memory.honcho_client import LocalMemoryStore  # noqa: E402
 from core.screen_context import analyze_screen  # noqa: E402
 from core.workflows import WorkflowStore, TERMINAL  # noqa: E402
 from core.job_search import extract_resume_profile, job_search_queries, match_job_pages  # noqa: E402
+from core.content_studio import ContentStore, STAGES as CONTENT_STAGES, CHANNELS as CONTENT_CHANNELS, FORMATS as CONTENT_FORMATS  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("jarvis.web")
 memory = LocalMemoryStore(ROOT / "data" / "jarvis_memory.sqlite3")
 workflows = WorkflowStore(ROOT / "data" / "jarvis_workflows.sqlite3")
+content = ContentStore(ROOT / "data" / "jarvis_content.sqlite3")
 HERMES_HOME = Path(os.getenv("HERMES_HOME", str(ROOT / "hermes-home")))
 HERMES_BASE = os.getenv("JARVIS_HERMES_URL", "http://127.0.0.1:8642").rstrip("/")
 EXPORT_ROOT = (ROOT / "data" / "exports").resolve()
@@ -309,7 +311,7 @@ def _load_profile_reference(max_chars: int = 8_000) -> str:
         return ""
 
 
-def _hermes_tool_evidence(run_id: str):
+def _hermes_tool_evidence(run_id: str, activity_out=None):
     """Return completed tool names from Hermes' event stream, or None if unavailable."""
     try:
         response = _hermes_request("GET", f"/v1/runs/{run_id}/events", timeout=6)
@@ -335,11 +337,67 @@ def _hermes_tool_evidence(run_id: str):
             name = str(event.get("tool", "")).strip()
             if name:
                 evidence.add(name)
+                if activity_out is not None:
+                    activity_out.append({"kind": "tool", "state": "completed", "name": name[:80]})
         elif kind == "subagent.complete":
             evidence.add("delegate_task")
+            if activity_out is not None:
+                name = str(event.get("agent_name") or event.get("name") or event.get("agent") or "Delegated agent").strip()[:80]
+                task = str(event.get("task") or event.get("description") or "").strip()[:180]
+                activity_out.append({"kind": "agent", "state": "completed", "name": name or "Delegated agent", "task": task})
+        elif activity_out is not None and kind.startswith("tool."):
+            action = kind.partition(".")[2]
+            name = str(event.get("tool", "Tool")).strip()[:80]
+            if action in {"started", "failed"}:
+                activity_out.append({"kind": "tool", "state": action, "name": name or "Tool"})
+        elif activity_out is not None and kind.startswith(("subagent.", "agent.")):
+            action = kind.partition(".")[2]
+            if action in {"started", "failed"}:
+                name = str(event.get("agent_name") or event.get("name") or event.get("agent") or "Delegated agent").strip()[:80]
+                task = str(event.get("task") or event.get("description") or "").strip()[:180]
+                activity_out.append({"kind": "agent", "state": action, "name": name or "Delegated agent", "task": task})
     result = sorted(evidence)
     _record_tool_verification(result)
     return result
+
+
+def _hermes_run_activity(run_id: str):
+    """Expose a small, argument-free activity feed for the task workspace."""
+    try:
+        response = _hermes_request("GET", f"/v1/runs/{run_id}/events", timeout=2)
+    except requests.RequestException:
+        return None
+    content_type = response.headers.get("Content-Type", "")
+    if not response.ok or not isinstance(content_type, str) or "text/event-stream" not in content_type:
+        return None
+    response_text = response.text
+    if not isinstance(response_text, str):
+        return None
+    activity = []
+    for block in re.split(r"\r?\n\r?\n", response_text):
+        data_line = next((line[6:].strip() for line in block.splitlines() if line.startswith("data: ")), None)
+        if not data_line:
+            continue
+        try:
+            event = json.loads(data_line)
+        except ValueError:
+            continue
+        kind = str(event.get("event", ""))
+        if kind.startswith("tool."):
+            action = kind.partition(".")[2]
+            if action not in {"started", "completed", "failed"}:
+                continue
+            name = str(event.get("tool", "Tool")).strip()[:80]
+            activity.append({"kind": "tool", "state": action, "name": name or "Tool"})
+        elif kind.startswith(("subagent.", "agent.")):
+            action = kind.partition(".")[2]
+            if action not in {"started", "complete", "completed", "failed"}:
+                continue
+            name = str(event.get("agent_name") or event.get("name") or event.get("agent") or "Delegated agent").strip()[:80]
+            task = str(event.get("task") or event.get("description") or "").strip()[:180]
+            activity.append({"kind": "agent", "state": action, "name": name or "Delegated agent", "task": task})
+    # Keep the newest observable events. Never include tool arguments or raw event payloads.
+    return activity[-24:]
 
 
 def _local_job_run_update(run_id: str, **updates):
@@ -696,6 +754,10 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/workflows":
             self._json(200, {"workflows": workflows.list(), "runs": workflows.runs()})
             return
+        if path == "/api/content":
+            self._json(200, {"profile": content.profile(), "items": content.list(), "stages": CONTENT_STAGES,
+                             "channels": CONTENT_CHANNELS, "formats": CONTENT_FORMATS})
+            return
         if path == "/api/memory":
             self._json(200, {"facts": memory.list_facts()})
             return
@@ -736,16 +798,21 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 return
             local_run = _local_job_run_get(run_id)
             if local_run is not None:
+                local_run.setdefault("activity", [])
                 self._json(200, local_run)
                 return
             try:
                 response = _hermes_request("GET", f"/v1/runs/{run_id}")
                 response.raise_for_status()
                 status = response.json()
+                if status.get("status") not in TERMINAL:
+                    status["activity"] = _hermes_run_activity(run_id)
                 text = str(status.get("output") or status.get("final_response") or status.get("error") or "")
                 export = None
                 if status.get("status") == "completed":
-                    tool_evidence = _hermes_tool_evidence(run_id)
+                    activity = []
+                    tool_evidence = _hermes_tool_evidence(run_id, activity_out=activity)
+                    status["activity"] = activity[-24:]
                     status["tool_evidence"] = tool_evidence
                     request_text = workflows.get_run_request(run_id)
                     has_job_evidence = not _JOB_SEARCH_REQUEST.search(request_text) or _job_export_has_live_evidence(tool_evidence)
@@ -852,6 +919,44 @@ class JarvisHandler(BaseHTTPRequestHandler):
             except Exception:
                 logger.exception("Knowledge folder picker failed")
                 self._json(500, {"error": "Could not open the folder picker."})
+            return
+        if path == "/api/content/profile":
+            try:
+                payload = self._read_json(max_bytes=12_000)
+                if not isinstance(payload, dict):
+                    raise ValueError("Request must be a JSON object.")
+                result = content.save_profile(payload.get("brand"), payload.get("audience"), payload.get("voice"), payload.get("pillars"))
+                self._json(200, {"profile": result})
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+            return
+        if path == "/api/content":
+            try:
+                payload = self._read_json(max_bytes=10_000)
+                if not isinstance(payload, dict):
+                    raise ValueError("Request must be a JSON object.")
+                item = content.create(payload.get("title"), payload.get("channel"), payload.get("format"), payload.get("topic"), payload.get("notes", ""))
+                self._json(201, {"item": item})
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+            return
+        if path.startswith("/api/content/"):
+            parts = path.strip("/").split("/")
+            if len(parts) != 4 or parts[0] != "api" or parts[1] != "content" or parts[3] not in {"stage", "run"} or not re.fullmatch(r"[a-f0-9]{32}", parts[2]):
+                self._json(404, {"error": "Content item endpoint not found."})
+                return
+            item_id, action = parts[2], parts[3]
+            try:
+                payload = self._read_json(max_bytes=2048)
+                if not isinstance(payload, dict):
+                    raise ValueError("Request must be a JSON object.")
+                item = content.update_stage(item_id, payload.get("stage")) if action == "stage" else content.attach_run(item_id, payload.get("run_id"), payload.get("research_requested", False))
+                if item is None:
+                    self._json(404, {"error": "Content item not found."})
+                    return
+                self._json(200, {"item": item})
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
             return
         if path == "/api/knowledge/remove":
             try:
